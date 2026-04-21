@@ -84,7 +84,50 @@ export interface ViewError {
   message?: string;
 }
 
-// ---------- tags view (the current AI view) ----------
+// ---------- doc view (the new AI view: Wikipedia-style synthesis) ----------
+
+export interface DocViewSection {
+  heading: string;
+  /** Free prose with inline `[#5]` or `[#5, #12]` citation markers. */
+  summary: string;
+  key_points: Array<{
+    text: string;
+    cites: number[]; // entry sequence numbers
+  }>;
+}
+
+export interface DocViewConflict {
+  topic: string;
+  perspectives: Array<{
+    view: string;
+    cites: number[];
+  }>;
+}
+
+export interface DocView {
+  title: string;
+  intro: string;
+  sections: DocViewSection[];
+  conflicting_views: DocViewConflict[];
+  off_topic_seqs: number[];
+}
+
+export interface DocViewResponse {
+  view: DocView;
+  head_hash: string;
+  cached: boolean;
+  cost_usd: number;
+  generated_at: string;
+  model?: string;
+  generation_seconds?: number;
+  stale?: boolean;
+  cache_head_hash?: string;
+  entries_since_cache?: number;
+  /** seq (as string) -> entry id, used to render [#N] as a link to #e-<id>. */
+  entry_seq_to_id: Record<string, string>;
+}
+
+// ---------- tags view (legacy AI view) ----------
 
 /** Per-entry metadata extracted by the LLM (subject, tags, relevance). */
 export interface EntryMetadata {

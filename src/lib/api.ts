@@ -11,6 +11,7 @@
  */
 import type {
   ChainEntry,
+  DocViewResponse,
   EntryWithBody,
   PageListItem,
   TagsResponse,
@@ -137,6 +138,57 @@ export async function fetchDefaultView(
     };
   }
   return { kind: "ok", view: json as ViewResponse };
+}
+
+/**
+ * Fetch the synthesized Doc View for a page.
+ *
+ * Same SWR semantics as fetchDefaultView: defaults to staleOk=true, so a
+ * lightly-stale cached doc is returned instantly and the backend regens
+ * in the background. Returns kind:"miss" if the page exists but no doc
+ * is cached AND we're in stale-ok mode (the caller falls back to chrono
+ * with a "generating doc..." note).
+ */
+export async function fetchDocView(
+  slug: string,
+  opts: { staleOk?: boolean; cacheOnly?: boolean } = {},
+): Promise<
+  | { kind: "ok"; data: DocViewResponse }
+  | { kind: "error"; status: number; error: string; message?: string }
+  | { kind: "miss" }
+> {
+  const staleOk = opts.staleOk ?? true;
+  const params = new URLSearchParams();
+  if (staleOk) params.set("stale_ok", "1");
+  if (opts.cacheOnly) params.set("cache_only", "1");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  // 5s when we'll fall back to chrono on miss; 75s when we're willing to
+  // block on inline LLM generation.
+  const timeoutMs = staleOk || opts.cacheOnly ? 5_000 : 75_000;
+  try {
+    const res = await fetch(
+      `${API_URL}/p/${encodeURIComponent(slug)}/views/doc${qs}`,
+      { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) },
+    );
+    if (res.status === 204) return { kind: "miss" };
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        kind: "error",
+        status: res.status,
+        error: json.error ?? "unknown",
+        message: json.message,
+      };
+    }
+    return { kind: "ok", data: json as DocViewResponse };
+  } catch (err) {
+    return {
+      kind: "error",
+      status: 0,
+      error: "network",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**

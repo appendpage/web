@@ -1,12 +1,15 @@
 "use client";
 
-import { Sparkles, Clock, FileJson } from "lucide-react";
+import { BookOpen, Clock, FileJson } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-// Order matches reading direction: chronological is the default + first.
+// Three views: a curated read (Doc), the raw timeline (Chronological),
+// and the canonical wire format (Raw JSONL). Chronological is the URL
+// default; Doc is the visual entry point most readers see first via
+// the link-back from the home page.
 const VIEWS = [
   { id: "chrono", label: "Chronological", icon: Clock },
-  { id: "ai", label: "AI view", icon: Sparkles },
+  { id: "doc", label: "Doc", icon: BookOpen },
   { id: "raw", label: "Raw JSONL", icon: FileJson },
 ] as const;
 

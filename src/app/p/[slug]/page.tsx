@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
-import { fetchBodies, fetchChain, fetchTags } from "@/lib/api";
+import { fetchBodies, fetchChain, fetchDocView } from "@/lib/api";
 import { PageView } from "@/components/PageView";
 import type { ViewId } from "@/components/ViewSwitcher";
 
@@ -49,11 +49,12 @@ export default async function Page({ params, searchParams }: Props) {
     .map((e) => JSON.stringify(e, Object.keys(e).sort()))
     .join("\n");
 
-  // AI view = tags. Stale-while-revalidate; if the page has uncached entries
-  // the backend extracts them in the background and the next visit is fresh.
-  let aiTags: Awaited<ReturnType<typeof fetchTags>> | null = null;
-  if (view === "ai" && entries.length > 0) {
-    aiTags = await fetchTags(slug);
+  // Doc view = synthesized, citation-linked document. Stale-while-revalidate;
+  // a slightly-stale doc renders instantly and the backend regenerates in
+  // the background so the next visit picks up the fresh one.
+  let docView: Awaited<ReturnType<typeof fetchDocView>> | null = null;
+  if (view === "doc" && entries.length > 0) {
+    docView = await fetchDocView(slug);
   }
 
   return (
@@ -64,15 +65,16 @@ export default async function Page({ params, searchParams }: Props) {
       entries={entries}
       bodies={bodies}
       rawSnippet={rawSnippet}
-      aiTags={aiTags}
-      initialTag={sp.tag}
-      initialQuery={sp.q}
+      docView={docView}
     />
   );
 }
 
 function parseView(v: string | undefined): ViewId {
-  if (v === "ai" || v === "raw") return v;
+  if (v === "doc" || v === "raw") return v;
+  // Backwards compat: ?view=ai used to mean the tag-based AI view; now
+  // it routes to the doc view (the new AI surface).
+  if (v === "ai") return "doc";
   // Chronological is the default — instant, always-fresh.
   return "chrono";
 }

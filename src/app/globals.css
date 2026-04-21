@@ -106,6 +106,23 @@ a {
   animation: spin-slow 2.5s linear infinite;
 }
 
+/* Doc view typography — used by intro/summary/key_points/conflicting_views
+   in DocView.tsx. Slightly more generous line-height than prose-entry to
+   make the synthesized prose feel like an article rather than a forum
+   post. Citation superscripts ([#5] markers) sit on the baseline cleanly
+   thanks to the `align-baseline` style on the <sup>. */
+.prose-doc {
+  @apply break-words;
+}
+.prose-doc p {
+  @apply my-2.5;
+}
+.prose-doc p:first-child { @apply mt-0; }
+.prose-doc p:last-child  { @apply mb-0; }
+.prose-doc sup {
+  @apply align-baseline relative -top-[0.15em];
+}
+
 /* Just-posted highlight — ring fades over ~2.5s so the user can locate
    their freshly-posted entry even if the page re-rendered while they
    were scrolling. Triggered from PageView after a successful POST. */

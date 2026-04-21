@@ -6,12 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ChainEntry,
+  DocViewResponse,
   EntryWithBody,
-  TagsResponse,
 } from "@/lib/types";
-import { AiView } from "./AiView";
 import { CodeBlock } from "./CodeBlock";
 import { Composer } from "./Composer";
+import { DocView } from "./DocView";
 import { EntryCard } from "./EntryCard";
 import { ViewSwitcher, type ViewId } from "./ViewSwitcher";
 
@@ -22,15 +22,21 @@ interface Props {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   rawSnippet: string;
-  /** Tags-view payload (the new AI view). null on backend error. */
-  aiTags:
-    | { kind: "ok"; data: TagsResponse }
+  /**
+   * Doc-view payload (the synthesized, citation-linked AI view). Three
+   * shapes:
+   *   - { kind: "ok", data }    rendered as the doc
+   *   - { kind: "miss" }        no cache yet, falls back to the doc
+   *                             placeholder; backend will generate on next
+   *                             non-stale fetch
+   *   - { kind: "error", ... }  service issue (budget cap, LLM error, ...)
+   *   - null                    not requested (view !== "doc")
+   */
+  docView:
+    | { kind: "ok"; data: DocViewResponse }
+    | { kind: "miss" }
     | { kind: "error"; status: number; error: string; message?: string }
     | null;
-  /** Initial ?tag=... for the AI view (filter + URL preserve). */
-  initialTag?: string;
-  /** Initial ?q=... for the AI view (search filter). */
-  initialQuery?: string;
 }
 
 export function PageView({
@@ -40,9 +46,7 @@ export function PageView({
   entries,
   bodies,
   rawSnippet,
-  aiTags,
-  initialTag,
-  initialQuery,
+  docView,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChainEntry | null>(null);
   /**
@@ -140,24 +144,15 @@ export function PageView({
       </div>
 
       {/* Active view */}
-      {view === "ai" && (
+      {view === "doc" && (
         <>
-          {aiTags?.kind === "ok" ? (
-            <AiView
-              slug={slug}
-              entries={entries}
-              bodies={bodies}
-              tags={aiTags.data}
-              initialTag={initialTag}
-              initialQuery={initialQuery}
-              onReply={setReplyTo}
-              justPostedId={justPostedId}
-            />
+          {docView?.kind === "ok" ? (
+            <DocView slug={slug} data={docView.data} />
           ) : (
-            <AiViewFallback
+            <DocViewFallback
               slug={slug}
               entryCount={entries.length}
-              status={aiTags}
+              status={docView}
             />
           )}
         </>
@@ -292,9 +287,9 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
   );
 }
 
-// ---------- AI view fallback ----------
+// ---------- Doc view fallback ----------
 
-function AiViewFallback({
+function DocViewFallback({
   slug,
   entryCount,
   status,
@@ -302,6 +297,7 @@ function AiViewFallback({
   slug: string;
   entryCount: number;
   status:
+    | { kind: "miss" }
     | { kind: "error"; status: number; error: string; message?: string }
     | null;
 }) {
@@ -311,25 +307,29 @@ function AiViewFallback({
   if (entryCount === 0) {
     headline = "Be the first to post.";
     message =
-      "Posts here can't be silently edited or deleted. Once you post, this view will tag entries automatically so you can filter by person, place, or topic.";
+      "Posts here can't be silently edited or deleted. Once a few posts arrive, this view will synthesize them into a citation-linked document.";
+  } else if (status?.kind === "miss") {
+    headline = "Generating the document…";
+    message =
+      "We're synthesizing this page's posts into an organized, citation-linked summary. Refresh in a few seconds — or read the chronological view in the meantime.";
   } else if (status?.kind === "error" && status.error === "budget_exceeded") {
-    headline = "AI tagging paused for cost.";
+    headline = "Doc view paused for cost.";
     message =
       status.message ??
-      "The daily OpenAI budget cap was reached. Tagging resumes at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
+      "The daily OpenAI budget cap was reached. The doc view resumes at 00:00 UTC. The data is unaffected — read it chronologically or raw.";
   } else if (status?.kind === "error") {
-    headline = "Couldn't load tags.";
+    headline = "Couldn't load the document.";
     message =
-      "The tag service didn't respond. Try the chronological view; the tags view will retry on the next page load.";
+      "The synthesis service didn't respond. Try the chronological view; the doc view will retry on the next page load.";
   } else {
-    headline = "Loading tags…";
+    headline = "Loading the document…";
     message = "Refresh in a moment.";
   }
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-10 text-center fade-in">
       <div className="text-xs uppercase tracking-wide text-zinc-500 font-medium mb-3">
-        AI view
+        Doc view
       </div>
       <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
         {headline}
