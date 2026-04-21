@@ -10,6 +10,7 @@ import type {
   TagsResponse,
 } from "@/lib/types";
 import { AiView } from "./AiView";
+import { CodeBlock } from "./CodeBlock";
 import { Composer } from "./Composer";
 import { EntryCard } from "./EntryCard";
 import { ViewSwitcher, type ViewId } from "./ViewSwitcher";
@@ -213,11 +214,14 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
           </a>
         </div>
       </div>
-      <pre className="overflow-x-auto whitespace-pre p-5 text-xs font-mono text-zinc-800 max-h-[60vh] leading-relaxed">
-        {rawSnippet}
-      </pre>
-      <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500 font-mono">
-        Verify: <span className="text-zinc-900">curl -sS /p/{slug}/raw | python tools/verify.py /dev/stdin</span>
+      <div className="max-h-[60vh] overflow-auto">
+        <CodeBlock tone="light">{rawSnippet}</CodeBlock>
+      </div>
+      <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500">
+        <p className="mb-2">Verify the chain in one command:</p>
+        <CodeBlock>
+          {`curl -sS https://append.page/p/${slug}/raw | python tools/verify.py /dev/stdin`}
+        </CodeBlock>
       </div>
     </div>
   );

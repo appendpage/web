@@ -1,6 +1,7 @@
 import { ChevronRight, Link2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
+import { CodeBlock } from "@/components/CodeBlock";
 import { fetchChain } from "@/lib/api";
 import type { ChainEntry } from "@/lib/types";
 
@@ -64,11 +65,10 @@ export default async function AuditPage({ params }: Props) {
         </h2>
         <div className="space-y-3 text-sm">
           <Step n={1} text="Download the JSONL:">
-            curl -O https://append.page/p/{slug}/raw
+            {`curl -O https://append.page/p/${slug}/raw`}
           </Step>
           <Step n={2} text="Get the verifier (50-line standalone Python):">
-            curl -O
-            https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py
+            {`curl -O https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py`}
           </Step>
           <Step n={3} text="Run it:">
             python verify.py raw
@@ -112,7 +112,15 @@ export default async function AuditPage({ params }: Props) {
   );
 }
 
-function Step({ n, text, children }: { n: number; text: string; children: React.ReactNode }) {
+function Step({
+  n,
+  text,
+  children,
+}: {
+  n: number;
+  text: string;
+  children: string;
+}) {
   return (
     <div className="flex items-start gap-3">
       <div className="shrink-0 size-6 rounded-full bg-zinc-100 text-zinc-700 inline-flex items-center justify-center text-xs font-semibold">
@@ -120,9 +128,7 @@ function Step({ n, text, children }: { n: number; text: string; children: React.
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-zinc-700 mb-1.5">{text}</p>
-        <pre className="overflow-x-auto bg-zinc-900 text-zinc-50 px-3 py-2 rounded-md text-xs font-mono">
-          {children}
-        </pre>
+        <CodeBlock>{children}</CodeBlock>
       </div>
     </div>
   );
