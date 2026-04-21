@@ -26,6 +26,13 @@ export interface PageInfo {
   entry_count?: number;
 }
 
+export interface PageListItem {
+  slug: string;
+  description: string;
+  entry_count: number;
+  last_post_at: string | null;
+}
+
 export interface EntryWithBody {
   entry: ChainEntry;
   body: string | null;

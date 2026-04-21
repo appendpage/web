@@ -12,6 +12,7 @@
 import type {
   ChainEntry,
   EntryWithBody,
+  PageListItem,
   TagsResponse,
   ViewResponse,
 } from "./types";
@@ -179,6 +180,31 @@ export async function fetchTags(
       error: "network",
       message: err instanceof Error ? err.message : String(err),
     };
+  }
+}
+
+/**
+ * List pages — by default the most-recently-active. Pass `q` to search by
+ * slug/description (prefix match ranked first). Used for the landing-page
+ * discovery list AND for /new's "did you mean an existing page?" autocomplete.
+ */
+export async function fetchPageList(
+  opts: { q?: string; limit?: number } = {},
+): Promise<PageListItem[]> {
+  const params = new URLSearchParams();
+  if (opts.q) params.set("q", opts.q);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  try {
+    const res = await fetch(`${API_URL}/pages${qs}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!res.ok) return [];
+    const j = (await res.json()) as { pages: PageListItem[] };
+    return Array.isArray(j.pages) ? j.pages : [];
+  } catch {
+    return [];
   }
 }
 
