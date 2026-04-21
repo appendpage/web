@@ -78,7 +78,7 @@ export default async function AuditPage({ params }: Props) {
           on-chain <code className="font-mono">body_commitment</code>. Erased
           entries skip the body check (no body to verify against), but the
           chain link is still checked. See{" "}
-          <a href="/AGENTS.md">AGENTS.md §7</a> for the full model.
+          <a href="/AGENTS.md">AGENTS.md §8</a> for the full model.
         </p>
       </section>
 
