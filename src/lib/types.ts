@@ -64,6 +64,12 @@ export interface ViewResponse {
   generated_at: string;
   model?: string;
   generation_seconds?: number;
+  /** When true, this view was generated before the current head_hash. */
+  stale?: boolean;
+  /** The head_hash this view was generated against (only set if stale). */
+  cache_head_hash?: string;
+  /** How many entries were posted after this view was generated. */
+  entries_since_cache?: number;
 }
 
 export interface ViewError {

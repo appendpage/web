@@ -90,27 +90,35 @@ export async function fetchBodies(
 
 /**
  * Fetch the LLM-generated default view for a page.
- * - cacheOnly=true: never trigger generation, just return what's cached
- *   (returns null on cache miss so the caller can render a "generating…" UI).
- * Returns:
- *   - ViewResponse on success or cache hit
- *   - { error, message? } object on budget cap / failure / empty page
- *   - null on cache miss with cacheOnly=true
+ *
+ * Defaults to staleOk=true: serve a slightly-stale cached view immediately
+ * if the chain has moved on, and let the backend regenerate in the background.
+ * The next visit (or refresh) gets the fresh one. This is the "stale-while-
+ * revalidate" pattern; without it, every post would block the next AI-view
+ * pageload behind a 5-15s LLM call.
+ *
+ * Set staleOk=false on the rare path where a fresh view is required (e.g.
+ * a "regenerate" button click).
  */
 export async function fetchDefaultView(
   slug: string,
-  opts: { cacheOnly?: boolean } = {},
+  opts: { staleOk?: boolean; cacheOnly?: boolean } = {},
 ): Promise<
   | { kind: "ok"; view: ViewResponse }
   | { kind: "error"; status: number; error: string; message?: string }
   | { kind: "miss" }
 > {
+  const staleOk = opts.staleOk ?? true;
   const params = new URLSearchParams();
+  if (staleOk) params.set("stale_ok", "1");
   if (opts.cacheOnly) params.set("cache_only", "1");
   const qs = params.toString() ? `?${params.toString()}` : "";
+  // SSR timeout: 45s if we might fall back to inline gen, 5s when we just
+  // want to grab a cached row.
+  const timeoutMs = staleOk || opts.cacheOnly ? 5_000 : 45_000;
   const res = await fetch(
     `${API_URL}/p/${encodeURIComponent(slug)}/views/default${qs}`,
-    { cache: "no-store", signal: AbortSignal.timeout(45_000) },
+    { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) },
   );
   if (res.status === 204) return { kind: "miss" };
   const json = await res.json().catch(() => ({}));

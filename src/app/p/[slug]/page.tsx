@@ -92,6 +92,8 @@ export default async function Page({ params, searchParams }: Props) {
 }
 
 function parseView(v: string | undefined): ViewId {
-  if (v === "chrono" || v === "raw") return v;
-  return "ai";
+  if (v === "ai" || v === "raw") return v;
+  // Chronological is the default — it's always instant (no LLM in the path)
+  // and always shows the freshest data. AI view is opt-in via the pill bar.
+  return "chrono";
 }

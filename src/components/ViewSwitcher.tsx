@@ -3,9 +3,10 @@
 import { Sparkles, Clock, FileJson } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+// Order matches reading direction: chronological is the default + first.
 const VIEWS = [
-  { id: "ai", label: "AI view", icon: Sparkles },
   { id: "chrono", label: "Chronological", icon: Clock },
+  { id: "ai", label: "AI view", icon: Sparkles },
   { id: "raw", label: "Raw JSONL", icon: FileJson },
 ] as const;
 
@@ -25,8 +26,8 @@ export function ViewSwitcher({ current }: { current: ViewId }) {
 
   function go(viewId: ViewId) {
     const params = new URLSearchParams(search.toString());
-    if (viewId === "ai") {
-      params.delete("view"); // ai is the default
+    if (viewId === "chrono") {
+      params.delete("view"); // chrono is the default
     } else {
       params.set("view", viewId);
     }

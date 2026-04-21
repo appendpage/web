@@ -102,6 +102,8 @@ export function PageView({
               slug={slug}
               view={aiView.view.view}
               cached={aiView.view.cached}
+              stale={aiView.view.stale ?? false}
+              entriesSinceCache={aiView.view.entries_since_cache ?? 0}
               generatedAt={aiView.view.generated_at}
               costUsd={aiView.view.cost_usd}
               bodies={bodies}

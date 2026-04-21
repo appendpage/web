@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Info,
+  RefreshCw,
   Sparkles,
   Lightbulb,
   type LucideIcon,
@@ -17,6 +18,10 @@ interface Props {
   slug: string;
   view: ViewJson;
   cached: boolean;
+  /** True if the cache row was generated before the current head_hash. */
+  stale: boolean;
+  /** How many entries were posted after the cached view was generated. */
+  entriesSinceCache: number;
   generatedAt: string;
   costUsd: number;
   bodies: Record<string, EntryWithBody>;
@@ -38,6 +43,8 @@ interface Props {
 export function AiView({
   view,
   cached,
+  stale,
+  entriesSinceCache,
   generatedAt,
   costUsd,
   bodies,
@@ -46,6 +53,22 @@ export function AiView({
 }: Props) {
   return (
     <div className="space-y-10 fade-in">
+      {/* "Refreshing in background" banner — shown when the cached view is
+          older than the current chain head. The view below it is the most
+          recent one we have; a fresh one is being generated and will appear
+          on the next visit. */}
+      {stale && entriesSinceCache > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-2.5 text-sm text-zinc-700 flex items-center gap-2.5">
+          <RefreshCw size={13} strokeWidth={2.25} className="text-zinc-500 animate-spin-slow" />
+          <span>
+            <span className="font-medium">{entriesSinceCache}</span>{" "}
+            new {entriesSinceCache === 1 ? "entry" : "entries"} since this view
+            was generated. Refreshing in the background — reload in a few
+            seconds for the latest.
+          </span>
+        </div>
+      )}
+
       {/* Header band: section summaries (the page-level take) */}
       {view.section_summaries.length > 0 && (
         <section className="rounded-2xl bg-gradient-to-br from-zinc-100/80 to-zinc-50 border border-zinc-200 px-7 py-6">

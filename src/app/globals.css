@@ -96,3 +96,12 @@ a {
 .fade-in {
   animation: fade-in 200ms ease-out;
 }
+
+/* Slow spin for the "refreshing in background" indicator on the AI view */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 2.5s linear infinite;
+}
