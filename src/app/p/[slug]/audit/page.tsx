@@ -65,7 +65,7 @@ export default async function AuditPage({ params }: Props) {
         </h2>
         <div className="space-y-3 text-sm">
           <Step n={1} text="Get the verifier (one stdlib-Python file):">
-            {`curl -O https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py`}
+            {`curl -O https://append.page/verify.py`}
           </Step>
           <Step n={2} text="Run it on this page:">
             {`python verify.py https://append.page/p/${slug}`}
