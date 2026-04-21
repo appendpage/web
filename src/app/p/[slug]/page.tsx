@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
-import { fetchBodies, fetchChain, fetchDefaultView } from "@/lib/api";
+import { fetchBodies, fetchChain, fetchTags } from "@/lib/api";
 import { PageView } from "@/components/PageView";
 import type { ViewId } from "@/components/ViewSwitcher";
 
 interface Props {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; tag?: string; q?: string }>;
 }
 
 export const dynamic = "force-dynamic";
@@ -33,8 +33,6 @@ export default async function Page({ params, searchParams }: Props) {
     notFound();
   }
 
-  // Probe the page existence: an empty array can mean "page doesn't exist"
-  // OR "page exists, no entries yet". Distinguish via raw status.
   if (entries.length === 0) {
     const probe = await fetch(
       `${process.env.APPEND_PAGE_API_URL ?? "https://append.page"}/p/${encodeURIComponent(slug)}/raw`,
@@ -43,39 +41,19 @@ export default async function Page({ params, searchParams }: Props) {
     if (probe.status === 404) notFound();
   }
 
-  // Fetch bodies for all entries (for the chronological + raw view).
-  // The Phase B bulk endpoint will replace the per-entry fallback inside
-  // fetchBodies.
-  const bodyMap = await fetchBodies(
-    slug,
-    entries.map((e) => e.id),
-  );
+  const bodyMap = await fetchBodies(slug, entries.map((e) => e.id));
   const bodies = Object.fromEntries(bodyMap);
 
-  // Raw view shows the canonical JSONL — re-serialize from what we have so
-  // we don't double-fetch /raw. (The frontend's only knowledge of canonical
-  // form is the entries we just got.)
+  // Re-emit canonical JSONL for the Raw view (avoids a second /raw fetch).
   const rawSnippet = entries
-    .map((e) =>
-      JSON.stringify(e, Object.keys(e).sort()),
-    )
+    .map((e) => JSON.stringify(e, Object.keys(e).sort()))
     .join("\n");
 
-  // Fetch the AI view if that's the active view (or pre-warm for the first
-  // visitor who doesn't switch). On budget cap / error we render a fallback.
-  let aiView: Awaited<ReturnType<typeof fetchDefaultView>> | null = null;
+  // AI view = tags. Stale-while-revalidate; if the page has uncached entries
+  // the backend extracts them in the background and the next visit is fresh.
+  let aiTags: Awaited<ReturnType<typeof fetchTags>> | null = null;
   if (view === "ai" && entries.length > 0) {
-    try {
-      aiView = await fetchDefaultView(slug);
-    } catch (err) {
-      console.error(`[/p/${slug}] AI view fetch threw:`, err);
-      aiView = {
-        kind: "error",
-        status: 500,
-        error: "fetch_failed",
-        message: "Could not reach the view endpoint.",
-      };
-    }
+    aiTags = await fetchTags(slug);
   }
 
   return (
@@ -86,14 +64,15 @@ export default async function Page({ params, searchParams }: Props) {
       entries={entries}
       bodies={bodies}
       rawSnippet={rawSnippet}
-      aiView={aiView}
+      aiTags={aiTags}
+      initialTag={sp.tag}
+      initialQuery={sp.q}
     />
   );
 }
 
 function parseView(v: string | undefined): ViewId {
   if (v === "ai" || v === "raw") return v;
-  // Chronological is the default — it's always instant (no LLM in the path)
-  // and always shows the freshest data. AI view is opt-in via the pill bar.
+  // Chronological is the default — instant, always-fresh.
   return "chrono";
 }

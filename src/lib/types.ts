@@ -76,3 +76,16 @@ export interface ViewError {
   error: string;
   message?: string;
 }
+
+// ---------- tags view (the current AI view) ----------
+
+export interface TagsResponse {
+  /** Map of entry id -> list of tags. Entries without tags yet are absent. */
+  entries_tags: Record<string, string[]>;
+  /** Tag string -> count of entries on this page that have it. */
+  tag_counts: Record<string, number>;
+  /** Number of entries we haven't extracted tags for yet. */
+  uncached_count: number;
+  /** True iff uncached_count > 0 — UI shows a "tagging…" indicator. */
+  stale: boolean;
+}

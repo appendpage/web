@@ -9,7 +9,12 @@
  * from (the official one at https://append.page, your own deploy, anything
  * spec-compatible).
  */
-import type { ChainEntry, EntryWithBody, ViewResponse } from "./types";
+import type {
+  ChainEntry,
+  EntryWithBody,
+  TagsResponse,
+  ViewResponse,
+} from "./types";
 
 const API_URL =
   process.env.APPEND_PAGE_API_URL ?? "https://append.page";
@@ -131,6 +136,50 @@ export async function fetchDefaultView(
     };
   }
   return { kind: "ok", view: json as ViewResponse };
+}
+
+/**
+ * Fetch the per-entry tags for a page (the new "AI view" backend).
+ *
+ * Defaults to staleOk=true: returns whatever's already cached and lets the
+ * backend extract any uncached entries in the background. Frontend shows
+ * an indicator when uncached_count > 0.
+ */
+export async function fetchTags(
+  slug: string,
+  opts: { staleOk?: boolean } = {},
+): Promise<
+  | { kind: "ok"; data: TagsResponse }
+  | { kind: "error"; status: number; error: string; message?: string }
+> {
+  const staleOk = opts.staleOk ?? true;
+  const params = new URLSearchParams();
+  if (staleOk) params.set("stale_ok", "1");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const timeoutMs = staleOk ? 5_000 : 60_000;
+  try {
+    const res = await fetch(
+      `${API_URL}/p/${encodeURIComponent(slug)}/tags${qs}`,
+      { cache: "no-store", signal: AbortSignal.timeout(timeoutMs) },
+    );
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        kind: "error",
+        status: res.status,
+        error: json.error ?? "unknown",
+        message: json.message,
+      };
+    }
+    return { kind: "ok", data: json as TagsResponse };
+  } catch (err) {
+    return {
+      kind: "error",
+      status: 0,
+      error: "network",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /** Fetch basic page metadata (status, description, entry count). */

@@ -7,7 +7,7 @@ import { useMemo, useState } from "react";
 import type {
   ChainEntry,
   EntryWithBody,
-  ViewResponse,
+  TagsResponse,
 } from "@/lib/types";
 import { AiView } from "./AiView";
 import { Composer } from "./Composer";
@@ -21,11 +21,15 @@ interface Props {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   rawSnippet: string;
-  aiView:
-    | { kind: "ok"; view: ViewResponse }
+  /** Tags-view payload (the new AI view). null on backend error. */
+  aiTags:
+    | { kind: "ok"; data: TagsResponse }
     | { kind: "error"; status: number; error: string; message?: string }
-    | { kind: "miss" }
     | null;
+  /** Initial ?tag=... for the AI view (filter + URL preserve). */
+  initialTag?: string;
+  /** Initial ?q=... for the AI view (search filter). */
+  initialQuery?: string;
 }
 
 export function PageView({
@@ -35,7 +39,9 @@ export function PageView({
   entries,
   bodies,
   rawSnippet,
-  aiView,
+  aiTags,
+  initialTag,
+  initialQuery,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChainEntry | null>(null);
 
@@ -43,12 +49,6 @@ export function PageView({
     const m = new Map<string, ChainEntry>();
     for (const e of entries) m.set(e.id, e);
     return m;
-  }, [entries]);
-
-  const entriesByIdRecord = useMemo(() => {
-    const r: Record<string, ChainEntry> = {};
-    for (const e of entries) r[e.id] = e;
-    return r;
   }, [entries]);
 
   return (
@@ -97,24 +97,21 @@ export function PageView({
       {/* Active view */}
       {view === "ai" && (
         <>
-          {aiView?.kind === "ok" ? (
+          {aiTags?.kind === "ok" ? (
             <AiView
               slug={slug}
-              view={aiView.view.view}
-              cached={aiView.view.cached}
-              stale={aiView.view.stale ?? false}
-              entriesSinceCache={aiView.view.entries_since_cache ?? 0}
-              generatedAt={aiView.view.generated_at}
-              costUsd={aiView.view.cost_usd}
+              entries={entries}
               bodies={bodies}
-              entriesById={entriesByIdRecord}
+              tags={aiTags.data}
+              initialTag={initialTag}
+              initialQuery={initialQuery}
               onReply={setReplyTo}
             />
           ) : (
             <AiViewFallback
               slug={slug}
               entryCount={entries.length}
-              status={aiView}
+              status={aiTags}
             />
           )}
         </>
@@ -237,7 +234,6 @@ function AiViewFallback({
   entryCount: number;
   status:
     | { kind: "error"; status: number; error: string; message?: string }
-    | { kind: "miss" }
     | null;
 }) {
   let headline: string;
@@ -246,20 +242,19 @@ function AiViewFallback({
   if (entryCount === 0) {
     headline = "Be the first to post.";
     message =
-      "Posts here can't be silently edited or deleted. Once you post, an AI view will organize them by topic.";
+      "Posts here can't be silently edited or deleted. Once you post, this view will tag entries automatically so you can filter by person, place, or topic.";
   } else if (status?.kind === "error" && status.error === "budget_exceeded") {
-    headline = "AI views paused for cost.";
+    headline = "AI tagging paused for cost.";
     message =
       status.message ??
-      "The daily OpenAI budget cap was reached. AI views resume at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
+      "The daily OpenAI budget cap was reached. Tagging resumes at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
   } else if (status?.kind === "error") {
-    headline = "AI view didn't generate.";
+    headline = "Couldn't load tags.";
     message =
-      "The LLM render failed. Try the chronological view; AI view will be retried on the next page-update.";
+      "The tag service didn't respond. Try the chronological view; the tags view will retry on the next page load.";
   } else {
-    headline = "AI view is generating…";
-    message =
-      "First time we're rendering this page. The LLM is working on it; refresh in a few seconds, or switch to the chronological view to read now.";
+    headline = "Loading tags…";
+    message = "Refresh in a moment.";
   }
 
   return (

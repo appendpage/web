@@ -1,333 +1,277 @@
 "use client";
 
-import {
-  AlertTriangle,
-  Info,
-  RefreshCw,
-  Sparkles,
-  Lightbulb,
-  type LucideIcon,
-} from "lucide-react";
-import { useState } from "react";
+import { Loader2, Search, Tag, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import type { ChainEntry, EntryWithBody, ViewJson } from "@/lib/types";
+import type {
+  ChainEntry,
+  EntryWithBody,
+  TagsResponse,
+} from "@/lib/types";
 
 interface Props {
   slug: string;
-  view: ViewJson;
-  cached: boolean;
-  /** True if the cache row was generated before the current head_hash. */
-  stale: boolean;
-  /** How many entries were posted after the cached view was generated. */
-  entriesSinceCache: number;
-  generatedAt: string;
-  costUsd: number;
+  entries: ChainEntry[]; // chronological order
   bodies: Record<string, EntryWithBody>;
-  entriesById: Record<string, ChainEntry>;
+  tags: TagsResponse;
+  /** initial filter taken from ?tag=... in the URL */
+  initialTag?: string;
+  /** initial query taken from ?q=... in the URL */
+  initialQuery?: string;
   onReply: (entry: ChainEntry) => void;
 }
 
 /**
- * Renders an LLM-generated view_json through a fixed component palette.
- *
- * The palette has NO raw-HTML escape hatch:
- *   <Group> | <SectionSummary> | <Callout> | <FilterChip> | <EntryRef>
- *
- * Posters' bodies (rendered inside <EntryRef>) go through react-markdown with
- * <script>/<iframe>/<style>/<img> stripped. The LLM's text fields render as
- * PLAIN TEXT (not markdown) so even if a prompt-injection slipped past
- * schema validation, it can't emit clickable links or images.
+ * The current "AI view": each entry has 2-5 LLM-extracted tags. The page
+ * shows a tag cloud + a search box; clicking a tag filters; typing in the
+ * search box filters by body match. No groupings, no summaries, no
+ * callouts. Concrete and immediately useful.
  */
 export function AiView({
-  view,
-  cached,
-  stale,
-  entriesSinceCache,
-  generatedAt,
-  costUsd,
+  slug,
+  entries,
   bodies,
-  entriesById,
+  tags,
+  initialTag,
+  initialQuery,
   onReply,
 }: Props) {
+  const [query, setQuery] = useState(initialQuery ?? "");
+  const [activeTag, setActiveTag] = useState<string | undefined>(initialTag);
+
+  // Sorted tag list for the cloud — most-frequent first.
+  const sortedTags = useMemo(
+    () =>
+      Object.entries(tags.tag_counts).sort((a, b) => {
+        if (b[1] !== a[1]) return b[1] - a[1]; // count desc
+        return a[0].localeCompare(b[0]);
+      }),
+    [tags.tag_counts],
+  );
+
+  // Filter entries: by activeTag, then by query, newest first.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...entries]
+      .reverse()
+      .filter((e) => {
+        if (activeTag) {
+          const t = tags.entries_tags[e.id] ?? [];
+          if (!t.includes(activeTag)) return false;
+        }
+        if (q) {
+          const body = bodies[e.id]?.body ?? "";
+          const entryTags = tags.entries_tags[e.id] ?? [];
+          const haystack = (body + " " + entryTags.join(" ")).toLowerCase();
+          if (!haystack.includes(q)) return false;
+        }
+        return true;
+      });
+  }, [entries, bodies, tags.entries_tags, activeTag, query]);
+
+  function clearFilters() {
+    setActiveTag(undefined);
+    setQuery("");
+  }
+
   return (
-    <div className="space-y-10 fade-in">
-      {/* "Refreshing in background" banner — shown when the cached view is
-          older than the current chain head. The view below it is the most
-          recent one we have; a fresh one is being generated and will appear
-          on the next visit. */}
-      {stale && entriesSinceCache > 0 && (
+    <div className="space-y-6 fade-in">
+      {/* Stale indicator */}
+      {tags.stale && (
         <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-2.5 text-sm text-zinc-700 flex items-center gap-2.5">
-          <RefreshCw size={13} strokeWidth={2.25} className="text-zinc-500 animate-spin-slow" />
+          <Loader2 size={13} className="text-zinc-500 animate-spin" />
           <span>
-            <span className="font-medium">{entriesSinceCache}</span>{" "}
-            new {entriesSinceCache === 1 ? "entry" : "entries"} since this view
-            was generated. Refreshing in the background — reload in a few
-            seconds for the latest.
+            Tagging{" "}
+            <span className="font-medium">{tags.uncached_count}</span> more{" "}
+            {tags.uncached_count === 1 ? "entry" : "entries"} in the background
+            — reload in a few seconds.
           </span>
         </div>
       )}
 
-      {/* Header band: section summaries (the page-level take) */}
-      {view.section_summaries.length > 0 && (
-        <section className="rounded-2xl bg-gradient-to-br from-zinc-100/80 to-zinc-50 border border-zinc-200 px-7 py-6">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-4">
-            <Sparkles size={12} strokeWidth={2.25} />
-            AI summary
+      {/* Search box */}
+      <div className="relative">
+        <Search
+          size={16}
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search posts and tags…"
+          className="w-full rounded-xl border border-zinc-200 bg-white pl-10 pr-4 py-3 text-sm placeholder:text-zinc-400 focus:border-zinc-900 outline-none transition-colors focus:ring-0"
+        />
+      </div>
+
+      {/* Tag cloud */}
+      {sortedTags.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-2.5">
+            <Tag size={12} strokeWidth={2.25} />
+            Filter by tag
           </div>
-          <div className="grid gap-5 md:grid-cols-3">
-            {view.section_summaries.map((s, i) => (
-              <div key={i}>
-                <h3 className="text-sm font-semibold text-zinc-900 mb-1">
-                  {s.label}
-                </h3>
-                <p className="text-sm text-zinc-700 leading-relaxed">
-                  {s.text}
-                </p>
-              </div>
-            ))}
+          <div className="flex flex-wrap gap-1.5">
+            {sortedTags.map(([tag, count]) => {
+              const active = tag === activeTag;
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag(active ? undefined : tag)}
+                  className={[
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors",
+                    active
+                      ? "border-zinc-900 bg-zinc-900 text-white"
+                      : "border-zinc-200 bg-white text-zinc-700 hover:border-zinc-900",
+                  ].join(" ")}
+                >
+                  <span>{tag}</span>
+                  <span
+                    className={
+                      active ? "text-zinc-300 tabular-nums" : "text-zinc-400 tabular-nums"
+                    }
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        </section>
+        </div>
       )}
 
-      {/* Callouts row */}
-      {view.callouts.length > 0 && (
-        <section className="grid gap-3 md:grid-cols-2">
-          {view.callouts.map((c, i) => (
-            <Callout
-              key={i}
-              tone={c.tone}
-              text={c.text}
-              relatedEntryIds={c.related_entry_ids}
+      {/* Active filters bar */}
+      {(activeTag || query.trim()) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+          <span className="text-zinc-400">Active:</span>
+          {activeTag && (
+            <FilterChip label={`tag: ${activeTag}`} onClear={() => setActiveTag(undefined)} />
+          )}
+          {query.trim() && (
+            <FilterChip label={`search: "${query.trim()}"`} onClear={() => setQuery("")} />
+          )}
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="ml-1 text-zinc-400 hover:text-zinc-900 transition-colors"
+          >
+            clear all
+          </button>
+        </div>
+      )}
+
+      {/* Results */}
+      {filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-zinc-300 bg-white/60 p-10 text-center">
+          <p className="text-sm font-medium text-zinc-800">No posts match.</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Try removing a filter or searching for something else.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((entry) => (
+            <TagEntryCard
+              key={entry.id}
+              entry={entry}
+              body={bodies[entry.id] ?? null}
+              tags={tags.entries_tags[entry.id] ?? []}
+              activeTag={activeTag}
+              onTagClick={setActiveTag}
+              onReply={onReply}
             />
           ))}
-        </section>
+        </div>
       )}
 
-      {/* Suggested filters */}
-      {view.suggested_filters.length > 0 && (
-        <section>
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-3">
-            <Lightbulb size={12} strokeWidth={2.25} />
-            Try
-          </div>
-          <ul className="flex flex-wrap gap-2">
-            {view.suggested_filters.map((f, i) => (
-              <li key={i}>
-                <span
-                  className="inline-block rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50 transition-colors cursor-default"
-                  title={f.natural_language}
-                >
-                  {f.label}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-zinc-400 mt-2 italic">
-            Custom views ship in the next update — these are suggestions for now.
-          </p>
-        </section>
-      )}
-
-      {/* Groupings — the meat */}
-      <section className="space-y-12">
-        {view.groupings.map((g, i) => (
-          <Group
-            key={i}
-            label={g.label}
-            summary={g.summary}
-            entryIds={g.entry_ids}
-            bodies={bodies}
-            entriesById={entriesById}
-            onReply={onReply}
-          />
-        ))}
-      </section>
-
-      <p className="text-xs text-zinc-400 text-center pt-4 border-t border-zinc-100">
-        Generated by AI · {cached ? "cached" : "fresh"} · {timeAgo(generatedAt)}
-        {costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ""}
+      {/* Footer note: power-user / contribution invite */}
+      <p className="pt-6 text-xs text-zinc-500 leading-relaxed border-t border-zinc-100">
+        This view is one of many. Want a different one?{" "}
+        <a
+          href={`/p/${encodeURIComponent(slug)}/raw`}
+          className="no-underline hover:text-zinc-900"
+        >
+          Download the raw JSONL
+        </a>{" "}
+        and roll your own — or{" "}
+        <a
+          href="https://github.com/appendpage/web"
+          className="no-underline hover:text-zinc-900"
+        >
+          fork the frontend
+        </a>{" "}
+        and{" "}
+        <a
+          href="https://github.com/appendpage/web/pulls"
+          className="no-underline hover:text-zinc-900"
+        >
+          open a PR
+        </a>
+        . PRs and issues with view ideas are welcome.
       </p>
     </div>
   );
 }
 
-// ---------- Group ----------
+// ---------- entry card with inline tags ----------
 
-function Group({
-  label,
-  summary,
-  entryIds,
-  bodies,
-  entriesById,
-  onReply,
-}: {
-  label: string;
-  summary: string | null;
-  entryIds: string[];
-  bodies: Record<string, EntryWithBody>;
-  entriesById: Record<string, ChainEntry>;
-  onReply: (e: ChainEntry) => void;
-}) {
-  return (
-    <div>
-      <div className="mb-4 max-w-prose">
-        <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-2">
-          {label}
-        </h2>
-        {summary && (
-          <p className="text-sm text-zinc-600 leading-relaxed">{summary}</p>
-        )}
-      </div>
-      <div className="space-y-3">
-        {entryIds.map((id) => {
-          const entry = entriesById[id];
-          const body = bodies[id];
-          if (!entry) return null;
-          return (
-            <EntryRef
-              key={id}
-              entry={entry}
-              body={body ?? null}
-              onReply={onReply}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ---------- Callout ----------
-
-const TONE_STYLES: Record<
-  "neutral" | "info" | "warning",
-  { wrapper: string; iconBg: string; icon: LucideIcon; iconColor: string; label: string }
-> = {
-  neutral: {
-    wrapper: "border-zinc-200 bg-white",
-    iconBg: "bg-zinc-100",
-    icon: Info,
-    iconColor: "text-zinc-500",
-    label: "Note",
-  },
-  info: {
-    wrapper: "border-zinc-200 bg-white",
-    iconBg: "bg-blue-50",
-    icon: Info,
-    iconColor: "text-blue-600",
-    label: "Pattern",
-  },
-  warning: {
-    wrapper: "border-amber-200 bg-amber-50/40",
-    iconBg: "bg-amber-100",
-    icon: AlertTriangle,
-    iconColor: "text-amber-700",
-    label: "Heads up",
-  },
-};
-
-function Callout({
-  tone,
-  text,
-  relatedEntryIds,
-}: {
-  tone: "neutral" | "warning" | "info";
-  text: string;
-  relatedEntryIds: string[];
-}) {
-  const s = TONE_STYLES[tone];
-  const Icon = s.icon;
-  return (
-    <div
-      className={`rounded-2xl border px-5 py-4 ${s.wrapper}`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`shrink-0 rounded-full ${s.iconBg} p-2`}
-        >
-          <Icon size={14} strokeWidth={2.25} className={s.iconColor} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium mb-1">
-            {s.label}
-          </div>
-          <p className="text-sm text-zinc-800 leading-relaxed">{text}</p>
-          {relatedEntryIds.length > 0 && (
-            <p className="text-xs text-zinc-400 mt-2">
-              Related:{" "}
-              {relatedEntryIds.slice(0, 5).map((id, i) => (
-                <span key={id}>
-                  {i > 0 && " · "}
-                  <a
-                    href={`#e-${id}`}
-                    className="font-mono no-underline hover:text-zinc-900"
-                  >
-                    {id.slice(0, 8)}
-                  </a>
-                </span>
-              ))}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------- EntryRef ----------
-
-function EntryRef({
+function TagEntryCard({
   entry,
   body,
+  tags,
+  activeTag,
+  onTagClick,
   onReply,
 }: {
   entry: ChainEntry;
   body: EntryWithBody | null;
+  tags: string[];
+  activeTag: string | undefined;
+  onTagClick: (tag: string) => void;
   onReply: (e: ChainEntry) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const erased = body?.erased ?? false;
   const text = body?.body ?? null;
-  const preview =
-    text && !erased
-      ? text.replace(/\s+/g, " ").slice(0, 180) +
-        (text.length > 180 ? "…" : "")
-      : null;
+  const isModeration = entry.kind === "moderation";
 
   return (
     <article
       id={`e-${entry.id}`}
-      className="rounded-xl border border-zinc-200 bg-white px-5 py-4 hover:border-zinc-300 transition-colors"
+      className={[
+        "group rounded-2xl border bg-white px-6 py-5 transition-colors",
+        isModeration
+          ? "border-amber-200 bg-amber-50/30"
+          : "border-zinc-200 hover:border-zinc-300",
+      ].join(" ")}
     >
-      <header className="flex items-center justify-between text-xs text-zinc-400 mb-2">
+      <header className="flex items-center justify-between gap-3 text-xs text-zinc-500 mb-3">
         <div className="flex items-center gap-2">
-          <span className="font-mono">#{entry.seq}</span>
-          {entry.kind === "moderation" && (
-            <span className="rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
+          <span className="font-mono text-zinc-400">#{entry.seq}</span>
+          <span className="text-zinc-300">·</span>
+          <time dateTime={entry.created_at}>
+            {formatTime(entry.created_at)}
+          </time>
+          {isModeration && (
+            <span className="ml-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
               Moderator
             </span>
           )}
           {entry.parent && (
-            <span className="text-zinc-300 inline-flex items-center gap-1">
-              ↳ reply
-            </span>
+            <span className="text-zinc-400">↳ reply</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => onReply(entry)}
-          className="text-zinc-400 hover:text-zinc-900 transition-colors"
-        >
-          Reply
-        </button>
+        <span className="font-mono text-[10px] text-zinc-300">
+          {entry.hash.slice(0, 14)}…
+        </span>
       </header>
 
-      {erased ? (
-        <p className="text-sm italic text-zinc-500">[body erased]</p>
-      ) : open && text ? (
-        <div className="prose-entry text-[0.95rem] fade-in">
+      <div className="prose-entry">
+        {erased ? (
+          <p className="italic text-zinc-500">[body erased]</p>
+        ) : text ? (
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             disallowedElements={["script", "iframe", "style", "img"]}
@@ -335,35 +279,87 @@ function EntryRef({
           >
             {text}
           </ReactMarkdown>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="mt-3 text-xs text-zinc-400 hover:text-zinc-900 transition-colors"
-          >
-            Show less
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="text-left text-[0.95rem] text-zinc-700 hover:text-zinc-900 transition-colors block w-full"
-        >
-          {preview ?? "[loading…]"}
-        </button>
+        ) : (
+          <p className="text-zinc-300">[loading…]</p>
+        )}
+      </div>
+
+      {(tags.length > 0 || true) && (
+        <footer className="mt-4 flex flex-wrap items-center gap-2">
+          {tags.length === 0 ? (
+            <span className="text-xs text-zinc-300 italic">untagged</span>
+          ) : (
+            tags.map((t) => {
+              const active = t === activeTag;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onTagClick(t)}
+                  className={[
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                    active
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200",
+                  ].join(" ")}
+                >
+                  {t}
+                </button>
+              );
+            })
+          )}
+          <span className="ml-auto">
+            <button
+              type="button"
+              onClick={() => onReply(entry)}
+              className="text-xs text-zinc-500 hover:text-zinc-900 transition-colors"
+            >
+              Reply
+            </button>
+          </span>
+        </footer>
       )}
     </article>
   );
 }
 
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const seconds = Math.floor((Date.now() - then) / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
+function FilterChip({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2.5 py-0.5 text-zinc-700">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        className="text-zinc-400 hover:text-zinc-900"
+        aria-label="clear filter"
+      >
+        <X size={11} />
+      </button>
+    </span>
+  );
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString();
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
