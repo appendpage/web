@@ -58,9 +58,7 @@ function SiteFooter() {
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           <a href="/AGENTS.md" className="no-underline hover:text-zinc-900">AGENTS.md</a>
           <a href="/api/spec.json" className="no-underline hover:text-zinc-900">API</a>
-          <a href="/privacy" className="no-underline hover:text-zinc-900">Privacy</a>
-          <a href="/terms" className="no-underline hover:text-zinc-900">Terms</a>
-          <a href="/contact" className="no-underline hover:text-zinc-900">Contact</a>
+          <a href="/notes" className="no-underline hover:text-zinc-900">About</a>
           <a href="/status" className="no-underline hover:text-zinc-900">Status</a>
         </div>
         <div className="text-xs">

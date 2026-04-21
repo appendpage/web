@@ -227,7 +227,7 @@ export default function NewPage() {
 
         <div className="flex items-center justify-between gap-3 pt-1">
           <p className="text-xs text-zinc-500">
-            By creating a page you agree to the <a href="/terms">terms</a>.
+            By creating a page you agree to the <a href="/notes">posting rules</a>.
           </p>
           <button
             type="submit"
