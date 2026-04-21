@@ -79,12 +79,28 @@ export interface ViewError {
 
 // ---------- tags view (the current AI view) ----------
 
+/** Per-entry metadata extracted by the LLM (subject, tags, relevance). */
+export interface EntryMetadata {
+  /** "Context · Specific Subject" string used to group entries directory-style. */
+  subject: string | null;
+  /** Topical tags. */
+  tags: string[];
+  /** false → off-topic / spam. UI collapses these by default. */
+  relevant: boolean;
+  /** One-line explanation when relevant=false. */
+  relevance_reason: string | null;
+}
+
 export interface TagsResponse {
-  /** Map of entry id -> list of tags. Entries without tags yet are absent. */
-  entries_tags: Record<string, string[]>;
-  /** Tag string -> count of entries on this page that have it. */
+  /** entry id -> per-entry metadata. Entries without cached meta are absent. */
+  entries_meta: Record<string, EntryMetadata>;
+  /** subject string -> count of relevant entries on this page with it. */
+  subject_counts: Record<string, number>;
+  /** tag string -> count of relevant entries on this page with it. */
   tag_counts: Record<string, number>;
-  /** Number of entries we haven't extracted tags for yet. */
+  /** Number of entries marked relevant=false. */
+  irrelevant_count: number;
+  /** Number of entries we haven't extracted metadata for yet. */
   uncached_count: number;
   /** True iff uncached_count > 0 — UI shows a "tagging…" indicator. */
   stale: boolean;
