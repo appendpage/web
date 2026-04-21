@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
-import { fetchBodies, fetchChain } from "@/lib/api";
+import { fetchBodies, fetchChain, fetchDefaultView } from "@/lib/api";
 import { PageView } from "@/components/PageView";
 import type { ViewId } from "@/components/ViewSwitcher";
 
@@ -61,6 +61,23 @@ export default async function Page({ params, searchParams }: Props) {
     )
     .join("\n");
 
+  // Fetch the AI view if that's the active view (or pre-warm for the first
+  // visitor who doesn't switch). On budget cap / error we render a fallback.
+  let aiView: Awaited<ReturnType<typeof fetchDefaultView>> | null = null;
+  if (view === "ai" && entries.length > 0) {
+    try {
+      aiView = await fetchDefaultView(slug);
+    } catch (err) {
+      console.error(`[/p/${slug}] AI view fetch threw:`, err);
+      aiView = {
+        kind: "error",
+        status: 500,
+        error: "fetch_failed",
+        message: "Could not reach the view endpoint.",
+      };
+    }
+  }
+
   return (
     <PageView
       slug={slug}
@@ -69,6 +86,7 @@ export default async function Page({ params, searchParams }: Props) {
       entries={entries}
       bodies={bodies}
       rawSnippet={rawSnippet}
+      aiView={aiView}
     />
   );
 }

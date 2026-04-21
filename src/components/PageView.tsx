@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 
-import type { ChainEntry, EntryWithBody } from "@/lib/types";
+import type {
+  ChainEntry,
+  EntryWithBody,
+  ViewResponse,
+} from "@/lib/types";
+import { AiView } from "./AiView";
 import { Composer } from "./Composer";
 import { EntryCard } from "./EntryCard";
 import { ViewSwitcher, type ViewId } from "./ViewSwitcher";
@@ -14,6 +19,16 @@ interface Props {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   rawSnippet: string;
+  /**
+   * AI view payload, fetched server-side. null if not cached yet (page is
+   * being generated) or if the budget was exceeded. The error variant lets
+   * us render a useful banner.
+   */
+  aiView:
+    | { kind: "ok"; view: ViewResponse }
+    | { kind: "error"; status: number; error: string; message?: string }
+    | { kind: "miss" }
+    | null;
 }
 
 /**
@@ -28,6 +43,7 @@ export function PageView({
   entries,
   bodies,
   rawSnippet,
+  aiView,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChainEntry | null>(null);
 
@@ -35,6 +51,12 @@ export function PageView({
     const m = new Map<string, ChainEntry>();
     for (const e of entries) m.set(e.id, e);
     return m;
+  }, [entries]);
+
+  const entriesByIdRecord = useMemo(() => {
+    const r: Record<string, ChainEntry> = {};
+    for (const e of entries) r[e.id] = e;
+    return r;
   }, [entries]);
 
   return (
@@ -66,7 +88,26 @@ export function PageView({
       </div>
 
       {view === "ai" && (
-        <AiViewPlaceholder slug={slug} entryCount={entries.length} />
+        <>
+          {aiView?.kind === "ok" ? (
+            <AiView
+              slug={slug}
+              view={aiView.view.view}
+              cached={aiView.view.cached}
+              generatedAt={aiView.view.generated_at}
+              costUsd={aiView.view.cost_usd}
+              bodies={bodies}
+              entriesById={entriesByIdRecord}
+              onReply={setReplyTo}
+            />
+          ) : (
+            <AiViewFallback
+              slug={slug}
+              entryCount={entries.length}
+              status={aiView}
+            />
+          )}
+        </>
       )}
 
       {view === "chrono" && (
@@ -176,50 +217,66 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
   );
 }
 
-// ---------- AI view placeholder ----------
+// ---------- AI view fallback ----------
+// Rendered when the AI view didn't load: empty page, budget exceeded,
+// generation error, or first-time visitor on a fresh chain (cache miss with
+// inline generation that timed out).
 
-function AiViewPlaceholder({
+function AiViewFallback({
   slug,
   entryCount,
+  status,
 }: {
   slug: string;
   entryCount: number;
+  status:
+    | { kind: "error"; status: number; error: string; message?: string }
+    | { kind: "miss" }
+    | null;
 }) {
+  let headline: string;
+  let message: string;
+
+  if (entryCount === 0) {
+    headline = "Be the first to post.";
+    message =
+      "Posts here can't be silently edited or deleted. Once you post, an AI view will organize them by topic.";
+  } else if (status?.kind === "error" && status.error === "budget_exceeded") {
+    headline = "AI views paused for cost.";
+    message =
+      status.message ??
+      "The daily OpenAI budget cap was reached. AI views will resume at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
+  } else if (status?.kind === "error") {
+    headline = "AI view didn't generate.";
+    message =
+      "The LLM render failed. Try the chronological view; AI view will be retried on the next page-update.";
+  } else {
+    headline = "AI view is generating…";
+    message =
+      "First time we're rendering this page. The LLM is working on it; refresh in a few seconds, or switch to the chronological view to read now.";
+  }
+
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-8">
       <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
         AI view
       </div>
-      <h2 className="text-lg font-semibold mb-2">
-        AI-organized view is coming online.
-      </h2>
-      <p className="text-sm text-zinc-600 mb-4">
-        The AI view is the default presentation: an LLM reads {entryCount}{" "}
-        {entryCount === 1 ? "entry" : "entries"} on this page and groups them
-        by topic, surfaces summaries, and highlights notable threads. It runs
-        once per page-update and is cached.
-      </p>
+      <h2 className="text-lg font-semibold mb-2">{headline}</h2>
+      <p className="text-sm text-zinc-600 mb-4 leading-relaxed">{message}</p>
       <p className="text-sm text-zinc-600">
-        Until it&apos;s wired up, switch to the{" "}
-        <button
-          type="button"
-          onClick={() => {
-            const url = new URL(window.location.href);
-            url.searchParams.set("view", "chrono");
-            window.location.href = url.toString();
-          }}
+        <a
+          href={`/p/${encodeURIComponent(slug)}?view=chrono`}
           className="text-zinc-900 underline underline-offset-2"
         >
-          chronological view
-        </button>{" "}
-        to read the page now. Same data, different presentation —{" "}
+          Open chronological view
+        </a>{" "}
+        ·{" "}
         <a
           href={`/p/${encodeURIComponent(slug)}/raw`}
           className="no-underline hover:underline"
         >
-          and the raw JSONL is always available
+          download raw JSONL
         </a>
-        .
       </p>
     </div>
   );

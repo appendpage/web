@@ -32,3 +32,41 @@ export interface EntryWithBody {
   erased: boolean;
   erased_reason?: string;
 }
+
+// ---------- LLM view ----------
+
+export interface ViewJson {
+  groupings: Array<{
+    label: string;
+    summary: string | null;
+    entry_ids: string[];
+  }>;
+  section_summaries: Array<{
+    label: string;
+    text: string;
+  }>;
+  callouts: Array<{
+    tone: "neutral" | "warning" | "info";
+    text: string;
+    related_entry_ids: string[];
+  }>;
+  suggested_filters: Array<{
+    label: string;
+    natural_language: string;
+  }>;
+}
+
+export interface ViewResponse {
+  view: ViewJson;
+  head_hash: string;
+  cached: boolean;
+  cost_usd: number;
+  generated_at: string;
+  model?: string;
+  generation_seconds?: number;
+}
+
+export interface ViewError {
+  error: string;
+  message?: string;
+}

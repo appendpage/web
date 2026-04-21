@@ -9,7 +9,7 @@
  * from (the official one at https://append.page, your own deploy, anything
  * spec-compatible).
  */
-import type { ChainEntry, EntryWithBody } from "./types";
+import type { ChainEntry, EntryWithBody, ViewResponse } from "./types";
 
 const API_URL =
   process.env.APPEND_PAGE_API_URL ?? "https://append.page";
@@ -86,6 +86,43 @@ export async function fetchBodies(
     }),
   );
   return result;
+}
+
+/**
+ * Fetch the LLM-generated default view for a page.
+ * - cacheOnly=true: never trigger generation, just return what's cached
+ *   (returns null on cache miss so the caller can render a "generating…" UI).
+ * Returns:
+ *   - ViewResponse on success or cache hit
+ *   - { error, message? } object on budget cap / failure / empty page
+ *   - null on cache miss with cacheOnly=true
+ */
+export async function fetchDefaultView(
+  slug: string,
+  opts: { cacheOnly?: boolean } = {},
+): Promise<
+  | { kind: "ok"; view: ViewResponse }
+  | { kind: "error"; status: number; error: string; message?: string }
+  | { kind: "miss" }
+> {
+  const params = new URLSearchParams();
+  if (opts.cacheOnly) params.set("cache_only", "1");
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(
+    `${API_URL}/p/${encodeURIComponent(slug)}/views/default${qs}`,
+    { cache: "no-store", signal: AbortSignal.timeout(45_000) },
+  );
+  if (res.status === 204) return { kind: "miss" };
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      kind: "error",
+      status: res.status,
+      error: json.error ?? "unknown",
+      message: json.message,
+    };
+  }
+  return { kind: "ok", view: json as ViewResponse };
 }
 
 /** Fetch basic page metadata (status, description, entry count). */
