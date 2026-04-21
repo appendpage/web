@@ -281,9 +281,11 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
         <CodeBlock tone="light">{rawSnippet}</CodeBlock>
       </div>
       <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500">
-        <p className="mb-2">Verify the chain in one command:</p>
+        <p className="mb-2">
+          Verify the chain and every body in one command:
+        </p>
         <CodeBlock>
-          {`curl -sS https://append.page/p/${slug}/raw | python tools/verify.py /dev/stdin`}
+          {`python verify.py https://append.page/p/${slug}`}
         </CodeBlock>
       </div>
     </div>

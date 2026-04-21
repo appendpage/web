@@ -61,24 +61,24 @@ export default async function AuditPage({ params }: Props) {
       <section className="mb-12 rounded-2xl border border-zinc-200 bg-white p-6">
         <h2 className="text-sm font-semibold text-zinc-900 mb-4 inline-flex items-center gap-2">
           <ShieldCheck size={14} />
-          Verify this chain
+          Verify this chain (and every body)
         </h2>
         <div className="space-y-3 text-sm">
-          <Step n={1} text="Download the JSONL:">
-            {`curl -O https://append.page/p/${slug}/raw`}
-          </Step>
-          <Step n={2} text="Get the verifier (50-line standalone Python):">
+          <Step n={1} text="Get the verifier (one stdlib-Python file):">
             {`curl -O https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py`}
           </Step>
-          <Step n={3} text="Run it:">
-            python verify.py raw
+          <Step n={2} text="Run it on this page:">
+            {`python verify.py https://append.page/p/${slug}`}
           </Step>
         </div>
-        <p className="text-xs text-zinc-500 mt-4">
-          Exit code 0 means the chain is intact: every entry&apos;s hash
-          recomputes correctly and every <code className="font-mono">prev_hash</code>{" "}
-          link is consistent. See <a href="/AGENTS.md">AGENTS.md §7</a> for the
-          full verification model.
+        <p className="text-xs text-zinc-500 mt-4 leading-relaxed">
+          Exit code 0 means: every entry&apos;s <code className="font-mono">hash</code> recomputes
+          correctly, every <code className="font-mono">prev_hash</code> link is consistent, and for every
+          non-erased entry <code className="font-mono">SHA-256(salt || body)</code> matches the
+          on-chain <code className="font-mono">body_commitment</code>. Erased
+          entries skip the body check (no body to verify against), but the
+          chain link is still checked. See{" "}
+          <a href="/AGENTS.md">AGENTS.md §7</a> for the full model.
         </p>
       </section>
 

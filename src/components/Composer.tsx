@@ -78,14 +78,9 @@ export function Composer({ slug, parent, onClearParent, onPostSuccess }: Props) 
     }
   }
 
-  // Cmd/Ctrl+Enter from inside the textarea submits. Matches muscle-memory
-  // from every other chat composer.
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      void submit();
-    }
-  }
+  // No keyboard shortcut for submit. Posts here are permanent, so the
+  // physical click on the Post button is the deliberate commit gesture.
+  // Plain Enter inserts a newline (browser default for textarea).
 
   return (
     <form
@@ -114,7 +109,6 @@ export function Composer({ slug, parent, onClearParent, onPostSuccess }: Props) 
           ref={taRef}
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          onKeyDown={onKeyDown}
           placeholder={
             parent
               ? "Write a reply… markdown is fine. Once posted, this can never be silently changed."
@@ -148,7 +142,7 @@ export function Composer({ slug, parent, onClearParent, onPostSuccess }: Props) 
             {byteLength.toLocaleString()} / {MAX_BYTES.toLocaleString()}
           </span>
           <span className="hidden sm:inline text-[11px] text-zinc-400">
-            ⌘+Enter to post
+            permanent — review before posting
           </span>
         </div>
         <button
