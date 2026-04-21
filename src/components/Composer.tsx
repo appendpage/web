@@ -11,11 +11,18 @@ interface Props {
   /** When set, the composer renders as a reply to this entry. */
   parent: ChainEntry | null;
   onClearParent: () => void;
+  /**
+   * Called on successful POST with the new entry's id so the parent can
+   * scroll to it + highlight it. The composer has no visibility into where
+   * new entries appear (chrono view has them at the top; AI view might
+   * have them under any subject), so it just hands the id up.
+   */
+  onPostSuccess?: (entryId: string) => void;
 }
 
 const MAX_BYTES = 4096;
 
-export function Composer({ slug, parent, onClearParent }: Props) {
+export function Composer({ slug, parent, onClearParent, onPostSuccess }: Props) {
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,8 +45,8 @@ export function Composer({ slug, parent, onClearParent }: Props) {
   const empty = body.trim().length === 0;
   const pct = Math.min(100, (byteLength / MAX_BYTES) * 100);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     if (empty || tooLong || submitting) return;
     setSubmitting(true);
     setError(null);
@@ -55,15 +62,28 @@ export function Composer({ slug, parent, onClearParent }: Props) {
           j.message ?? j.error ?? `${res.status} ${res.statusText}`,
         );
       }
+      const j = (await res.json().catch(() => null)) as
+        | { entry?: { id?: string } }
+        | null;
       setBody("");
       onClearParent();
       router.refresh();
+      if (j?.entry?.id && onPostSuccess) onPostSuccess(j.entry.id);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Something went wrong. Try again?",
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  // Cmd/Ctrl+Enter from inside the textarea submits. Matches muscle-memory
+  // from every other chat composer.
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      void submit();
     }
   }
 
@@ -94,6 +114,7 @@ export function Composer({ slug, parent, onClearParent }: Props) {
           ref={taRef}
           value={body}
           onChange={(e) => setBody(e.target.value)}
+          onKeyDown={onKeyDown}
           placeholder={
             parent
               ? "Write a reply… markdown is fine. Once posted, this can never be silently changed."
@@ -125,6 +146,9 @@ export function Composer({ slug, parent, onClearParent }: Props) {
             }`}
           >
             {byteLength.toLocaleString()} / {MAX_BYTES.toLocaleString()}
+          </span>
+          <span className="hidden sm:inline text-[11px] text-zinc-400">
+            ⌘+Enter to post
           </span>
         </div>
         <button

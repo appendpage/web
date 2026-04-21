@@ -105,3 +105,14 @@ a {
 .animate-spin-slow {
   animation: spin-slow 2.5s linear infinite;
 }
+
+/* Just-posted highlight — ring fades over ~2.5s so the user can locate
+   their freshly-posted entry even if the page re-rendered while they
+   were scrolling. Triggered from PageView after a successful POST. */
+@keyframes post-flash {
+  0%   { box-shadow: 0 0 0 3px rgb(24 24 27); background-color: rgb(250 250 250); }
+  100% { box-shadow: 0 0 0 0 transparent;     background-color: white; }
+}
+.post-flash {
+  animation: post-flash 2.8s ease-out;
+}

@@ -13,9 +13,15 @@ interface Props {
   parentSnippet?: string;
   /** Called when the user clicks "Reply" — opens the composer with parent set. */
   onReply: (entry: ChainEntry) => void;
+  /**
+   * If true, apply a fading ring highlight so the user can locate their
+   * just-submitted post after the page re-renders. PageView clears this
+   * a few seconds after a successful POST.
+   */
+  justPosted?: boolean;
 }
 
-export function EntryCard({ entry, body, parentSnippet, onReply }: Props) {
+export function EntryCard({ entry, body, parentSnippet, onReply, justPosted }: Props) {
   const [showHash, setShowHash] = useState(false);
   const isModeration = entry.kind === "moderation";
   const erased = body?.erased ?? false;
@@ -29,7 +35,8 @@ export function EntryCard({ entry, body, parentSnippet, onReply }: Props) {
         isModeration
           ? "border-amber-200/80 bg-amber-50/30"
           : "border-zinc-200 hover:border-zinc-300",
-      ].join(" ")}
+        justPosted ? "post-flash" : "",
+      ].filter(Boolean).join(" ")}
     >
       <header className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">

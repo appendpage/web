@@ -1,8 +1,8 @@
 "use client";
 
-import { ChevronRight, Download, ShieldCheck } from "lucide-react";
+import { Check, ChevronRight, Download, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ChainEntry,
@@ -45,6 +45,50 @@ export function PageView({
   initialQuery,
 }: Props) {
   const [replyTo, setReplyTo] = useState<ChainEntry | null>(null);
+  /**
+   * After a successful POST, the Composer hands us the new entry's id.
+   * We:
+   *   1. Show a small "Posted ✓" confirmation toast (2s).
+   *   2. Scroll to #e-<id> once it renders (SSR refresh is async — we
+   *      poll for the node on a short RAF loop for up to 2s).
+   *   3. Keep the id in state so EntryCard can apply the .post-flash class
+   *      and the user can locate the new entry even on a long page.
+   */
+  const [justPostedId, setJustPostedId] = useState<string | null>(null);
+  const [showPostedToast, setShowPostedToast] = useState(false);
+  const flashClearRef = useRef<number | null>(null);
+
+  const handlePostSuccess = useCallback((id: string) => {
+    setJustPostedId(id);
+    setShowPostedToast(true);
+    window.setTimeout(() => setShowPostedToast(false), 1800);
+    if (flashClearRef.current) window.clearTimeout(flashClearRef.current);
+    flashClearRef.current = window.setTimeout(() => {
+      setJustPostedId((current) => (current === id ? null : current));
+    }, 4000);
+  }, []);
+
+  // Scroll the new entry into view once React finishes re-rendering with
+  // the SSR-refreshed data. The node is named `e-<id>`. We retry for ~2s
+  // because router.refresh() is fire-and-forget.
+  useEffect(() => {
+    if (!justPostedId) return;
+    let cancelled = false;
+    let attempts = 0;
+    function tryScroll() {
+      if (cancelled) return;
+      const el = document.getElementById(`e-${justPostedId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+      if (attempts++ < 20) window.setTimeout(tryScroll, 100);
+    }
+    tryScroll();
+    return () => {
+      cancelled = true;
+    };
+  }, [justPostedId, entries.length]);
 
   const entriesById = useMemo(() => {
     const m = new Map<string, ChainEntry>();
@@ -107,6 +151,7 @@ export function PageView({
               initialTag={initialTag}
               initialQuery={initialQuery}
               onReply={setReplyTo}
+              justPostedId={justPostedId}
             />
           ) : (
             <AiViewFallback
@@ -124,6 +169,7 @@ export function PageView({
           bodies={bodies}
           entriesById={entriesById}
           onReply={setReplyTo}
+          justPostedId={justPostedId}
         />
       )}
 
@@ -135,8 +181,22 @@ export function PageView({
           slug={slug}
           parent={replyTo}
           onClearParent={() => setReplyTo(null)}
+          onPostSuccess={handlePostSuccess}
         />
       </div>
+
+      {/* Transient "Posted ✓" confirmation toast. Lives as a fixed overlay
+          so it's visible whether the user is at the top of the list or still
+          near the composer. Auto-fades after ~1.8s. */}
+      {showPostedToast && (
+        <div
+          aria-live="polite"
+          className="fixed left-1/2 top-6 z-50 -translate-x-1/2 rounded-full bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg ring-1 ring-zinc-900/10 fade-in pointer-events-none inline-flex items-center gap-1.5"
+        >
+          <Check size={14} strokeWidth={2.5} />
+          Posted
+        </div>
+      )}
     </main>
   );
 }
@@ -147,11 +207,13 @@ function ChronoView({
   entries,
   bodies,
   onReply,
+  justPostedId,
 }: {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   entriesById: Map<string, ChainEntry>;
   onReply: (e: ChainEntry) => void;
+  justPostedId: string | null;
 }) {
   if (entries.length === 0) {
     return (
@@ -181,6 +243,7 @@ function ChronoView({
             body={bodies[e.id] ?? null}
             parentSnippet={parentSnippet}
             onReply={onReply}
+            justPosted={e.id === justPostedId}
           />
         );
       })}

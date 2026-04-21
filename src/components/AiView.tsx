@@ -28,6 +28,8 @@ interface Props {
   initialTag?: string;
   initialQuery?: string;
   onReply: (entry: ChainEntry) => void;
+  /** Entry id to flash-highlight right after it was just POSTed. */
+  justPostedId?: string | null;
 }
 
 const UNTAGGED_KEY = "__no_subject__";
@@ -48,6 +50,7 @@ export function AiView({
   initialTag,
   initialQuery,
   onReply,
+  justPostedId,
 }: Props) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [activeTag, setActiveTag] = useState<string | undefined>(initialTag);
@@ -273,6 +276,7 @@ export function AiView({
               activeTag={activeTag}
               onTagClick={setActiveTag}
               onReply={onReply}
+              justPostedId={justPostedId}
             />
           ))}
           {untaggedRelevant.length > 0 && (
@@ -290,6 +294,7 @@ export function AiView({
               onTagClick={setActiveTag}
               onReply={onReply}
               muted
+              justPostedId={justPostedId}
             />
           )}
         </div>
@@ -368,6 +373,7 @@ function SubjectGroup({
   onTagClick,
   onReply,
   muted,
+  justPostedId,
 }: {
   bucket: SubjectBucket;
   bodies: Record<string, EntryWithBody>;
@@ -376,6 +382,7 @@ function SubjectGroup({
   onTagClick: (tag: string) => void;
   onReply: (e: ChainEntry) => void;
   muted?: boolean;
+  justPostedId?: string | null;
 }) {
   return (
     <section>
@@ -411,6 +418,7 @@ function SubjectGroup({
             activeTag={activeTag}
             onTagClick={onTagClick}
             onReply={onReply}
+            justPosted={entry.id === justPostedId}
           />
         ))}
       </div>
@@ -427,6 +435,7 @@ function DirectoryEntryCard({
   activeTag,
   onTagClick,
   onReply,
+  justPosted,
 }: {
   entry: ChainEntry;
   body: EntryWithBody | null;
@@ -434,6 +443,7 @@ function DirectoryEntryCard({
   activeTag: string | undefined;
   onTagClick: (tag: string) => void;
   onReply: (e: ChainEntry) => void;
+  justPosted?: boolean;
 }) {
   const erased = body?.erased ?? false;
   const text = body?.body ?? null;
@@ -447,7 +457,8 @@ function DirectoryEntryCard({
         isModeration
           ? "border-amber-200 bg-amber-50/30"
           : "border-zinc-200 hover:border-zinc-300",
-      ].join(" ")}
+        justPosted ? "post-flash" : "",
+      ].filter(Boolean).join(" ")}
     >
       <header className="flex items-center justify-between gap-3 text-xs text-zinc-500 mb-2">
         <div className="flex items-center gap-2">
