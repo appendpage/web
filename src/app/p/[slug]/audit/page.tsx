@@ -1,3 +1,4 @@
+import { ChevronRight, Link2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 import { fetchChain } from "@/lib/api";
@@ -14,85 +15,164 @@ export default async function AuditPage({ params }: Props) {
   const entries = await fetchChain(slug);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
-      <header className="mb-6">
-        <div className="text-xs text-zinc-500 mb-1">
-          <a href="/" className="no-underline hover:underline">
-            append.page
-          </a>{" "}
-          / <Link href={`/p/${slug}`}>/p/{slug}</Link> /
+    <main className="mx-auto max-w-4xl px-6 py-12">
+      <nav className="text-sm text-zinc-500 mb-4 flex items-center gap-1.5">
+        <Link href="/" className="no-underline hover:text-zinc-900">
+          append.page
+        </Link>
+        <ChevronRight size={14} className="text-zinc-300" />
+        <Link
+          href={`/p/${slug}`}
+          className="no-underline hover:text-zinc-900 font-mono"
+        >
+          /p/{slug}
+        </Link>
+        <ChevronRight size={14} className="text-zinc-300" />
+        <span className="text-zinc-700">audit</span>
+      </nav>
+
+      <header className="mb-10">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-2">
+          <ShieldCheck size={12} strokeWidth={2.25} />
+          Chain audit
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Audit</h1>
-        <p className="mt-2 text-sm text-zinc-600">
-          {entries.length === 0
-            ? "Empty chain."
-            : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}, head ${entries[entries.length - 1]?.hash.slice(0, 20)}…`}
+        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
+          Audit
+        </h1>
+        <p className="mt-2 text-zinc-600">
+          {entries.length === 0 ? (
+            "Empty chain."
+          ) : (
+            <>
+              <span className="font-mono text-zinc-900 tabular-nums">
+                {entries.length}
+              </span>{" "}
+              {entries.length === 1 ? "entry" : "entries"} · head{" "}
+              <code className="font-mono text-xs">
+                {entries[entries.length - 1]?.hash.slice(0, 24)}…
+              </code>
+            </>
+          )}
         </p>
       </header>
 
-      <section className="mb-8 rounded-lg border border-zinc-200 bg-white p-5">
-        <h2 className="text-sm font-semibold mb-2">Verify this chain</h2>
-        <ol className="list-decimal pl-5 text-sm text-zinc-700 space-y-1">
-          <li>
-            Download the JSONL:{" "}
-            <code className="font-mono">
-              curl -O https://append.page/p/{slug}/raw
-            </code>
-          </li>
-          <li>
-            Get the verifier:{" "}
-            <code className="font-mono">
-              curl -O
-              https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py
-            </code>
-          </li>
-          <li>
-            Run it: <code className="font-mono">python verify.py raw</code>
-          </li>
-        </ol>
-        <p className="text-xs text-zinc-500 mt-3">
-          The verifier replays the chain, recomputes every hash, and checks
-          every <code className="font-mono">prev_hash</code> link. Exit code 0
-          means the chain is intact. See <a href="/AGENTS.md">AGENTS.md §7</a>.
+      {/* Verifier instructions */}
+      <section className="mb-12 rounded-2xl border border-zinc-200 bg-white p-6">
+        <h2 className="text-sm font-semibold text-zinc-900 mb-4 inline-flex items-center gap-2">
+          <ShieldCheck size={14} />
+          Verify this chain
+        </h2>
+        <div className="space-y-3 text-sm">
+          <Step n={1} text="Download the JSONL:">
+            curl -O https://append.page/p/{slug}/raw
+          </Step>
+          <Step n={2} text="Get the verifier (50-line standalone Python):">
+            curl -O
+            https://raw.githubusercontent.com/appendpage/appendpage/main/tools/verify.py
+          </Step>
+          <Step n={3} text="Run it:">
+            python verify.py raw
+          </Step>
+        </div>
+        <p className="text-xs text-zinc-500 mt-4">
+          Exit code 0 means the chain is intact: every entry&apos;s hash
+          recomputes correctly and every <code className="font-mono">prev_hash</code>{" "}
+          link is consistent. See <a href="/AGENTS.md">AGENTS.md §7</a> for the
+          full verification model.
         </p>
       </section>
 
+      {/* Chain visualization */}
       <section>
-        <h2 className="text-sm font-semibold mb-3">Chain</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-zinc-900 mb-4">
+          Chain
+        </h2>
         {entries.length === 0 ? (
           <p className="text-zinc-500">(Empty.)</p>
         ) : (
-          <ol className="space-y-1 font-mono text-xs">
-            {entries.map((e: ChainEntry) => (
-              <li
-                key={e.id}
-                className="rounded border border-zinc-200 bg-white px-3 py-2"
-              >
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="text-zinc-500">#{e.seq}</span>
-                  <span className="text-zinc-900 break-all">{e.id}</span>
-                  <span className="text-zinc-500">{e.kind}</span>
-                  {e.parent && (
-                    <span className="text-zinc-500">
-                      ↳ parent {e.parent.slice(0, 12)}…
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 text-zinc-600 break-all">
-                  prev: {e.prev_hash}
-                </div>
-                <div className="text-zinc-900 break-all">hash: {e.hash}</div>
+          <ol className="space-y-2">
+            {entries.map((e: ChainEntry, idx) => (
+              <li key={e.id}>
+                <ChainNode entry={e} isFirst={idx === 0} isLast={idx === entries.length - 1} />
               </li>
             ))}
           </ol>
         )}
       </section>
 
-      <p className="mt-8 text-xs text-zinc-500">
-        <Link href={`/p/${slug}`} className="no-underline hover:underline">
-          ← back to /p/{slug}
+      <p className="mt-10 text-sm">
+        <Link
+          href={`/p/${slug}`}
+          className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
+        >
+          ← Back to /p/{slug}
         </Link>
       </p>
     </main>
+  );
+}
+
+function Step({ n, text, children }: { n: number; text: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="shrink-0 size-6 rounded-full bg-zinc-100 text-zinc-700 inline-flex items-center justify-center text-xs font-semibold">
+        {n}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-zinc-700 mb-1.5">{text}</p>
+        <pre className="overflow-x-auto bg-zinc-900 text-zinc-50 px-3 py-2 rounded-md text-xs font-mono">
+          {children}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+function ChainNode({
+  entry,
+  isFirst,
+  isLast,
+}: {
+  entry: ChainEntry;
+  isFirst: boolean;
+  isLast: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 hover:border-zinc-300 transition-colors">
+      <div className="flex items-center gap-3 mb-2">
+        <span className="font-mono text-sm font-medium text-zinc-900 tabular-nums">
+          #{entry.seq}
+        </span>
+        <span className="text-zinc-300">·</span>
+        <span className="font-mono text-xs text-zinc-500 truncate flex-1">
+          {entry.id}
+        </span>
+        <span className="rounded-full bg-zinc-100 text-zinc-700 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
+          {entry.kind}
+        </span>
+        {entry.parent && (
+          <span className="text-xs text-zinc-500 inline-flex items-center gap-1">
+            <Link2 size={11} />
+            replies to {entry.parent.slice(0, 10)}…
+          </span>
+        )}
+      </div>
+      <div className="font-mono text-[11px] text-zinc-500 space-y-0.5 break-all">
+        <div>
+          <span className="text-zinc-400">prev:</span>{" "}
+          <span className={isFirst ? "text-zinc-400 italic" : ""}>
+            {entry.prev_hash}
+            {isFirst && " (genesis seed)"}
+          </span>
+        </div>
+        <div>
+          <span className="text-zinc-400">hash:</span>{" "}
+          <span className={isLast ? "text-zinc-900 font-medium" : "text-zinc-700"}>
+            {entry.hash}
+            {isLast && " ← head"}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }

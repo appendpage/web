@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 
 import "./globals.css";
 
@@ -32,9 +34,17 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-screen flex flex-col">
-        {children}
+    <html
+      lang="en"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+    >
+      <body
+        className="min-h-screen flex flex-col font-sans"
+        style={{
+          fontFamily: `${GeistSans.style.fontFamily}, ui-sans-serif, system-ui, sans-serif`,
+        }}
+      >
+        <div className="flex-1">{children}</div>
         <SiteFooter />
       </body>
     </html>
@@ -43,28 +53,25 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
 function SiteFooter() {
   return (
-    <footer className="mt-16 border-t border-zinc-200 bg-white">
-      <div className="mx-auto max-w-3xl px-6 py-6 text-sm text-zinc-500 flex flex-wrap gap-x-4 gap-y-2 justify-between">
-        <div className="flex flex-wrap gap-x-4">
-          <a href="/AGENTS.md" className="no-underline hover:underline">AGENTS.md</a>
-          <a href="/api/spec.json" className="no-underline hover:underline">API</a>
-          <a href="/privacy" className="no-underline hover:underline">Privacy</a>
-          <a href="/terms" className="no-underline hover:underline">Terms</a>
-          <a href="/contact" className="no-underline hover:underline">Contact</a>
-          <a href="/status" className="no-underline hover:underline">Status</a>
+    <footer className="mt-24 border-t border-zinc-200/80 bg-white/40 backdrop-blur-sm">
+      <div className="mx-auto max-w-5xl px-6 py-10 text-sm text-zinc-500 flex flex-wrap gap-x-6 gap-y-3 justify-between items-center">
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          <a href="/AGENTS.md" className="no-underline hover:text-zinc-900">AGENTS.md</a>
+          <a href="/api/spec.json" className="no-underline hover:text-zinc-900">API</a>
+          <a href="/privacy" className="no-underline hover:text-zinc-900">Privacy</a>
+          <a href="/terms" className="no-underline hover:text-zinc-900">Terms</a>
+          <a href="/contact" className="no-underline hover:text-zinc-900">Contact</a>
+          <a href="/status" className="no-underline hover:text-zinc-900">Status</a>
         </div>
-        <div>
+        <div className="text-xs">
           Run by{" "}
-          <a
-            href="https://github.com/da03"
-            className="no-underline hover:underline"
-          >
+          <a href="https://github.com/da03" className="no-underline hover:text-zinc-900">
             @da03
           </a>
           {" · "}
           <a
             href="https://github.com/appendpage"
-            className="no-underline hover:underline"
+            className="no-underline hover:text-zinc-900"
           >
             Open source (MIT)
           </a>

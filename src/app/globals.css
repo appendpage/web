@@ -4,6 +4,12 @@
 
 :root {
   color-scheme: light;
+  /* Subtle global typography polish */
+  --font-feature-default: "ss01" on, "cv01" on;
+}
+
+html {
+  font-feature-settings: var(--font-feature-default);
 }
 
 html,
@@ -11,53 +17,82 @@ body {
   @apply bg-zinc-50 text-zinc-900 antialiased;
 }
 
-a {
-  @apply text-zinc-900 underline underline-offset-2 decoration-zinc-300 hover:decoration-zinc-900;
+body {
+  /* Subtle grain via radial gradient — academic-paper feel without being noisy. */
+  background-image:
+    radial-gradient(at 20% 0%, rgb(244 244 245) 0%, transparent 60%),
+    radial-gradient(at 80% 100%, rgb(244 244 245) 0%, transparent 60%);
+  background-attachment: fixed;
 }
 
-/* Markdown body styling — matches react-markdown output */
+/* Sensible default link color (overridable) */
+a {
+  @apply text-zinc-900 underline underline-offset-[3px] decoration-zinc-300 hover:decoration-zinc-900 transition-colors;
+}
+
+/* Smooth focus ring on every interactive element. */
+*:focus-visible {
+  @apply outline-none ring-2 ring-zinc-900 ring-offset-2 ring-offset-zinc-50 rounded-md;
+}
+
+/* Selection — soft, not harsh blue */
+::selection {
+  background-color: rgb(24 24 27);
+  color: white;
+}
+
+/* Markdown body styling — used by entries and the audit page */
 .prose-entry {
   @apply text-zinc-800 leading-relaxed break-words;
 }
 .prose-entry p {
-  @apply my-2;
+  @apply my-2.5;
 }
-.prose-entry p:first-child {
-  @apply mt-0;
-}
-.prose-entry p:last-child {
-  @apply mb-0;
-}
+.prose-entry p:first-child { @apply mt-0; }
+.prose-entry p:last-child  { @apply mb-0; }
 .prose-entry h1,
 .prose-entry h2,
 .prose-entry h3,
 .prose-entry h4 {
-  @apply font-semibold text-zinc-900 mt-4 mb-2;
+  @apply font-semibold text-zinc-900 mt-5 mb-2 tracking-tight;
 }
 .prose-entry h1 { @apply text-lg; }
 .prose-entry h2 { @apply text-base; }
 .prose-entry h3 { @apply text-base; }
 .prose-entry ul,
 .prose-entry ol {
-  @apply list-disc pl-6 my-2;
+  @apply pl-6 my-2.5 space-y-1;
 }
+.prose-entry ul { @apply list-disc; }
 .prose-entry ol { @apply list-decimal; }
 .prose-entry code {
-  @apply bg-zinc-100 px-1 py-0.5 rounded text-[0.875em] font-mono;
+  @apply bg-zinc-100 px-1.5 py-0.5 rounded-md text-[0.875em] font-mono text-zinc-800;
 }
 .prose-entry pre {
-  @apply bg-zinc-100 p-3 rounded overflow-x-auto my-2 text-sm;
+  @apply bg-zinc-100 p-4 rounded-lg overflow-x-auto my-3 text-sm;
 }
 .prose-entry pre code {
   @apply bg-transparent p-0 rounded-none;
 }
 .prose-entry blockquote {
-  @apply border-l-2 border-zinc-300 pl-4 my-2 text-zinc-600 italic;
+  @apply border-l-2 border-zinc-300 pl-4 my-3 text-zinc-600 italic;
 }
 .prose-entry hr {
-  @apply my-4 border-zinc-200;
+  @apply my-5 border-zinc-200;
 }
 .prose-entry img {
   /* Posters can write markdown images; we render the alt text as plain. */
   display: none;
+}
+.prose-entry strong {
+  @apply font-semibold text-zinc-900;
+}
+
+/* Smooth fade-in for content that appears after async loads */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fade-in 200ms ease-out;
 }

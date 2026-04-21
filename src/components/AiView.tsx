@@ -1,5 +1,12 @@
 "use client";
 
+import {
+  AlertTriangle,
+  Info,
+  Sparkles,
+  Lightbulb,
+  type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -12,26 +19,23 @@ interface Props {
   cached: boolean;
   generatedAt: string;
   costUsd: number;
-  /** Map of entry id -> entry+body for resolving referenced ids. */
   bodies: Record<string, EntryWithBody>;
   entriesById: Record<string, ChainEntry>;
-  /** Forward a "Reply" click to PageView so it opens the composer. */
   onReply: (entry: ChainEntry) => void;
 }
 
 /**
  * Renders an LLM-generated view_json through a fixed component palette.
  *
- * The palette is intentionally small and has NO raw-HTML escape hatch:
+ * The palette has NO raw-HTML escape hatch:
  *   <Group> | <SectionSummary> | <Callout> | <FilterChip> | <EntryRef>
  *
  * Posters' bodies (rendered inside <EntryRef>) go through react-markdown with
- * <script>/<iframe>/<style>/<img> stripped. The LLM's text fields are rendered
- * as PLAIN TEXT (no markdown) so even if a prompt-injection slipped past
+ * <script>/<iframe>/<style>/<img> stripped. The LLM's text fields render as
+ * PLAIN TEXT (not markdown) so even if a prompt-injection slipped past
  * schema validation, it can't emit clickable links or images.
  */
 export function AiView({
-  slug,
   view,
   cached,
   generatedAt,
@@ -41,26 +45,32 @@ export function AiView({
   onReply,
 }: Props) {
   return (
-    <div className="space-y-8">
+    <div className="space-y-10 fade-in">
+      {/* Header band: section summaries (the page-level take) */}
       {view.section_summaries.length > 0 && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-5">
-          <ul className="space-y-3">
+        <section className="rounded-2xl bg-gradient-to-br from-zinc-100/80 to-zinc-50 border border-zinc-200 px-7 py-6">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-4">
+            <Sparkles size={12} strokeWidth={2.25} />
+            AI summary
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
             {view.section_summaries.map((s, i) => (
-              <li key={i}>
-                <h3 className="text-sm font-semibold text-zinc-900">
+              <div key={i}>
+                <h3 className="text-sm font-semibold text-zinc-900 mb-1">
                   {s.label}
                 </h3>
-                <p className="text-sm text-zinc-700 mt-1 leading-relaxed">
+                <p className="text-sm text-zinc-700 leading-relaxed">
                   {s.text}
                 </p>
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 
+      {/* Callouts row */}
       {view.callouts.length > 0 && (
-        <section className="space-y-2">
+        <section className="grid gap-3 md:grid-cols-2">
           {view.callouts.map((c, i) => (
             <Callout
               key={i}
@@ -72,16 +82,18 @@ export function AiView({
         </section>
       )}
 
+      {/* Suggested filters */}
       {view.suggested_filters.length > 0 && (
         <section>
-          <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-zinc-500 font-medium mb-3">
+            <Lightbulb size={12} strokeWidth={2.25} />
             Try
           </div>
           <ul className="flex flex-wrap gap-2">
             {view.suggested_filters.map((f, i) => (
               <li key={i}>
                 <span
-                  className="inline-block rounded-full border border-zinc-300 bg-white px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+                  className="inline-block rounded-full border border-zinc-200 bg-white px-3.5 py-1.5 text-sm text-zinc-700 hover:border-zinc-900 hover:bg-zinc-50 transition-colors cursor-default"
                   title={f.natural_language}
                 >
                   {f.label}
@@ -89,14 +101,14 @@ export function AiView({
               </li>
             ))}
           </ul>
-          <p className="text-xs text-zinc-500 mt-2">
-            (Custom views ship in the next update — these are suggestions for
-            now.)
+          <p className="text-xs text-zinc-400 mt-2 italic">
+            Custom views ship in the next update — these are suggestions for now.
           </p>
         </section>
       )}
 
-      <section className="space-y-6">
+      {/* Groupings — the meat */}
+      <section className="space-y-12">
         {view.groupings.map((g, i) => (
           <Group
             key={i}
@@ -106,14 +118,12 @@ export function AiView({
             bodies={bodies}
             entriesById={entriesById}
             onReply={onReply}
-            slug={slug}
           />
         ))}
       </section>
 
-      <p className="text-xs text-zinc-400 text-right">
-        Generated by AI · {cached ? "cached" : "fresh"} ·{" "}
-        {timeAgo(generatedAt)}
+      <p className="text-xs text-zinc-400 text-center pt-4 border-t border-zinc-100">
+        Generated by AI · {cached ? "cached" : "fresh"} · {timeAgo(generatedAt)}
         {costUsd > 0 ? ` · $${costUsd.toFixed(4)}` : ""}
       </p>
     </div>
@@ -129,7 +139,6 @@ function Group({
   bodies,
   entriesById,
   onReply,
-  slug,
 }: {
   label: string;
   summary: string | null;
@@ -137,16 +146,17 @@ function Group({
   bodies: Record<string, EntryWithBody>;
   entriesById: Record<string, ChainEntry>;
   onReply: (e: ChainEntry) => void;
-  slug: string;
 }) {
   return (
     <div>
-      <h2 className="text-base font-semibold tracking-tight text-zinc-900 mb-1">
-        {label}
-      </h2>
-      {summary && (
-        <p className="text-sm text-zinc-600 mb-3 leading-relaxed">{summary}</p>
-      )}
+      <div className="mb-4 max-w-prose">
+        <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-2">
+          {label}
+        </h2>
+        {summary && (
+          <p className="text-sm text-zinc-600 leading-relaxed">{summary}</p>
+        )}
+      </div>
       <div className="space-y-3">
         {entryIds.map((id) => {
           const entry = entriesById[id];
@@ -158,7 +168,6 @@ function Group({
               entry={entry}
               body={body ?? null}
               onReply={onReply}
-              slug={slug}
             />
           );
         })}
@@ -169,6 +178,33 @@ function Group({
 
 // ---------- Callout ----------
 
+const TONE_STYLES: Record<
+  "neutral" | "info" | "warning",
+  { wrapper: string; iconBg: string; icon: LucideIcon; iconColor: string; label: string }
+> = {
+  neutral: {
+    wrapper: "border-zinc-200 bg-white",
+    iconBg: "bg-zinc-100",
+    icon: Info,
+    iconColor: "text-zinc-500",
+    label: "Note",
+  },
+  info: {
+    wrapper: "border-zinc-200 bg-white",
+    iconBg: "bg-blue-50",
+    icon: Info,
+    iconColor: "text-blue-600",
+    label: "Pattern",
+  },
+  warning: {
+    wrapper: "border-amber-200 bg-amber-50/40",
+    iconBg: "bg-amber-100",
+    icon: AlertTriangle,
+    iconColor: "text-amber-700",
+    label: "Heads up",
+  },
+};
+
 function Callout({
   tone,
   text,
@@ -178,39 +214,46 @@ function Callout({
   text: string;
   relatedEntryIds: string[];
 }) {
-  const styles =
-    tone === "warning"
-      ? "border-amber-300 bg-amber-50 text-amber-900"
-      : tone === "info"
-        ? "border-sky-200 bg-sky-50 text-sky-900"
-        : "border-zinc-200 bg-zinc-50 text-zinc-800";
+  const s = TONE_STYLES[tone];
+  const Icon = s.icon;
   return (
-    <div className={`rounded-lg border px-4 py-3 text-sm ${styles}`}>
-      <p>{text}</p>
-      {relatedEntryIds.length > 0 && (
-        <p className="text-xs opacity-70 mt-1">
-          Related:{" "}
-          {relatedEntryIds.slice(0, 5).map((id, i) => (
-            <span key={id}>
-              {i > 0 && ", "}
-              <a
-                href={`#e-${id}`}
-                className="font-mono no-underline hover:underline"
-              >
-                {id.slice(0, 8)}
-              </a>
-            </span>
-          ))}
-        </p>
-      )}
+    <div
+      className={`rounded-2xl border px-5 py-4 ${s.wrapper}`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`shrink-0 rounded-full ${s.iconBg} p-2`}
+        >
+          <Icon size={14} strokeWidth={2.25} className={s.iconColor} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] uppercase tracking-wide text-zinc-500 font-medium mb-1">
+            {s.label}
+          </div>
+          <p className="text-sm text-zinc-800 leading-relaxed">{text}</p>
+          {relatedEntryIds.length > 0 && (
+            <p className="text-xs text-zinc-400 mt-2">
+              Related:{" "}
+              {relatedEntryIds.slice(0, 5).map((id, i) => (
+                <span key={id}>
+                  {i > 0 && " · "}
+                  <a
+                    href={`#e-${id}`}
+                    className="font-mono no-underline hover:text-zinc-900"
+                  >
+                    {id.slice(0, 8)}
+                  </a>
+                </span>
+              ))}
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
 // ---------- EntryRef ----------
-// Compact entry rendering inside the AI view groupings. Links to the full
-// entry anchor (which the chronological view also uses) so cross-view linking
-// works.
 
 function EntryRef({
   entry,
@@ -220,74 +263,71 @@ function EntryRef({
   entry: ChainEntry;
   body: EntryWithBody | null;
   onReply: (e: ChainEntry) => void;
-  slug: string;
 }) {
   const [open, setOpen] = useState(false);
   const erased = body?.erased ?? false;
   const text = body?.body ?? null;
   const preview =
     text && !erased
-      ? text.replace(/\s+/g, " ").slice(0, 160) +
-        (text.length > 160 ? "…" : "")
+      ? text.replace(/\s+/g, " ").slice(0, 180) +
+        (text.length > 180 ? "…" : "")
       : null;
 
   return (
     <article
       id={`e-${entry.id}`}
-      className="rounded-md border border-zinc-200 bg-white p-3"
+      className="rounded-xl border border-zinc-200 bg-white px-5 py-4 hover:border-zinc-300 transition-colors"
     >
-      <header className="flex items-center justify-between text-xs text-zinc-500">
+      <header className="flex items-center justify-between text-xs text-zinc-400 mb-2">
         <div className="flex items-center gap-2">
           <span className="font-mono">#{entry.seq}</span>
           {entry.kind === "moderation" && (
-            <span className="rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+            <span className="rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
               Moderator
             </span>
           )}
           {entry.parent && (
-            <span className="text-zinc-400">↳ reply</span>
+            <span className="text-zinc-300 inline-flex items-center gap-1">
+              ↳ reply
+            </span>
           )}
         </div>
         <button
           type="button"
           onClick={() => onReply(entry)}
-          className="text-zinc-500 hover:text-zinc-900"
+          className="text-zinc-400 hover:text-zinc-900 transition-colors"
         >
           Reply
         </button>
       </header>
 
       {erased ? (
-        <p className="mt-2 text-sm italic text-zinc-500">[body erased]</p>
-      ) : (
-        <div className="mt-2">
-          {open && text ? (
-            <div className="prose-entry text-sm">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                disallowedElements={["script", "iframe", "style", "img"]}
-                unwrapDisallowed
-              >
-                {text}
-              </ReactMarkdown>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="mt-2 text-xs text-zinc-500 hover:text-zinc-900"
-              >
-                Show less
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="text-left text-sm text-zinc-700 hover:text-zinc-900"
-            >
-              {preview ?? "[loading…]"}
-            </button>
-          )}
+        <p className="text-sm italic text-zinc-500">[body erased]</p>
+      ) : open && text ? (
+        <div className="prose-entry text-[0.95rem] fade-in">
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            disallowedElements={["script", "iframe", "style", "img"]}
+            unwrapDisallowed
+          >
+            {text}
+          </ReactMarkdown>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-3 text-xs text-zinc-400 hover:text-zinc-900 transition-colors"
+          >
+            Show less
+          </button>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-left text-[0.95rem] text-zinc-700 hover:text-zinc-900 transition-colors block w-full"
+        >
+          {preview ?? "[loading…]"}
+        </button>
       )}
     </article>
   );

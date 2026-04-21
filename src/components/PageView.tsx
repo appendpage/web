@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronRight, Download, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type {
@@ -19,11 +21,6 @@ interface Props {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   rawSnippet: string;
-  /**
-   * AI view payload, fetched server-side. null if not cached yet (page is
-   * being generated) or if the budget was exceeded. The error variant lets
-   * us render a useful banner.
-   */
   aiView:
     | { kind: "ok"; view: ViewResponse }
     | { kind: "error"; status: number; error: string; message?: string }
@@ -31,11 +28,6 @@ interface Props {
     | null;
 }
 
-/**
- * The /p/<slug> client component. Hosts the pill bar, the active view, the
- * compose box, and Reply state. Server passes pre-fetched entries + bodies;
- * client manages reply target.
- */
 export function PageView({
   slug,
   description,
@@ -60,33 +52,49 @@ export function PageView({
   }, [entries]);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-8">
-      <header className="mb-6">
-        <div className="text-xs text-zinc-500 mb-1">
-          <a href="/" className="no-underline hover:underline">
+    <main className="mx-auto max-w-5xl px-6 py-10 sm:py-14">
+      {/* Page header */}
+      <header className="mb-8">
+        <nav className="text-sm text-zinc-500 mb-3 flex items-center gap-1.5">
+          <Link href="/" className="no-underline hover:text-zinc-900">
             append.page
-          </a>{" "}
-          /
+          </Link>
+          <ChevronRight size={14} className="text-zinc-300" />
+          <span className="font-mono text-zinc-700">/p/{slug}</span>
+        </nav>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-900">
+              /p/{slug}
+            </h1>
+            {description && (
+              <p className="mt-2 text-zinc-600 max-w-2xl">{description}</p>
+            )}
+          </div>
+          <div className="text-xs text-zinc-500 flex items-center gap-4">
+            <span>
+              <span className="font-mono text-zinc-900 tabular-nums">
+                {entries.length}
+              </span>{" "}
+              {entries.length === 1 ? "entry" : "entries"}
+            </span>
+            <Link
+              href={`/p/${encodeURIComponent(slug)}/audit`}
+              className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
+            >
+              <ShieldCheck size={13} />
+              Audit
+            </Link>
+          </div>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">/p/{slug}</h1>
-        {description && (
-          <p className="mt-2 text-sm text-zinc-600">{description}</p>
-        )}
       </header>
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      {/* Pill bar */}
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <ViewSwitcher current={view} />
-        <div className="text-xs text-zinc-500">
-          {entries.length} {entries.length === 1 ? "entry" : "entries"} ·{" "}
-          <a
-            href={`/p/${encodeURIComponent(slug)}/audit`}
-            className="no-underline hover:underline"
-          >
-            audit chain
-          </a>
-        </div>
       </div>
 
+      {/* Active view */}
       {view === "ai" && (
         <>
           {aiView?.kind === "ok" ? (
@@ -119,11 +127,10 @@ export function PageView({
         />
       )}
 
-      {view === "raw" && (
-        <RawView slug={slug} rawSnippet={rawSnippet} />
-      )}
+      {view === "raw" && <RawView slug={slug} rawSnippet={rawSnippet} />}
 
-      <div className="sticky bottom-4 mt-8">
+      {/* Sticky composer */}
+      <div className="sticky bottom-4 mt-12 z-10">
         <Composer
           slug={slug}
           parent={replyTo}
@@ -139,7 +146,6 @@ export function PageView({
 function ChronoView({
   entries,
   bodies,
-  entriesById,
   onReply,
 }: {
   entries: ChainEntry[];
@@ -149,9 +155,9 @@ function ChronoView({
 }) {
   if (entries.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-zinc-300 bg-white p-8 text-center text-zinc-500">
-        <p className="font-medium text-zinc-700">No entries yet.</p>
-        <p className="mt-1 text-sm">
+      <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/60 p-12 text-center">
+        <p className="text-base font-medium text-zinc-900">No entries yet.</p>
+        <p className="mt-2 text-sm text-zinc-500 max-w-sm mx-auto">
           Be the first to post. Posts here can&apos;t be silently edited or
           deleted.
         </p>
@@ -159,11 +165,10 @@ function ChronoView({
     );
   }
 
-  // Newest first per spec; reverse a copy so we don't mutate.
   const ordered = [...entries].reverse();
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 fade-in">
       {ordered.map((e) => {
         const parentSnippet =
           e.parent && bodies[e.parent]?.body
@@ -187,40 +192,39 @@ function ChronoView({
 
 function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white">
-      <div className="border-b border-zinc-200 px-4 py-3 text-xs text-zinc-500 flex items-center justify-between">
+    <div className="rounded-2xl border border-zinc-200 bg-white overflow-hidden fade-in">
+      <div className="border-b border-zinc-200 px-5 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
         <span>
-          JCS-canonicalized JSONL, one entry per line.{" "}
+          JCS-canonicalized JSONL · one entry per line · the canonical wire
+          format
+        </span>
+        <div className="flex flex-wrap items-center gap-3">
           <a
             href={`/p/${encodeURIComponent(slug)}/raw`}
-            className="no-underline hover:underline"
+            className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
           >
+            <Download size={12} />
             Download
-          </a>{" "}
-          ·{" "}
+          </a>
           <a
-            href={`https://huggingface.co/datasets/appendpage/ledger`}
-            className="no-underline hover:underline"
+            href="https://huggingface.co/datasets/appendpage/ledger"
+            className="no-underline hover:text-zinc-900"
           >
             HF mirror
-          </a>{" "}
-          ·{" "}
-          <code className="font-mono">
-            python verify.py /path/to/file.jsonl
-          </code>
-        </span>
+          </a>
+        </div>
       </div>
-      <pre className="overflow-x-auto whitespace-pre p-4 text-xs font-mono text-zinc-800 max-h-[60vh]">
+      <pre className="overflow-x-auto whitespace-pre p-5 text-xs font-mono text-zinc-800 max-h-[60vh] leading-relaxed">
         {rawSnippet}
       </pre>
+      <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500 font-mono">
+        Verify: <span className="text-zinc-900">curl -sS /p/{slug}/raw | python tools/verify.py /dev/stdin</span>
+      </div>
     </div>
   );
 }
 
 // ---------- AI view fallback ----------
-// Rendered when the AI view didn't load: empty page, budget exceeded,
-// generation error, or first-time visitor on a fresh chain (cache miss with
-// inline generation that timed out).
 
 function AiViewFallback({
   slug,
@@ -245,7 +249,7 @@ function AiViewFallback({
     headline = "AI views paused for cost.";
     message =
       status.message ??
-      "The daily OpenAI budget cap was reached. AI views will resume at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
+      "The daily OpenAI budget cap was reached. AI views resume at 00:00 UTC. The data is unaffected — switch to chronological or raw.";
   } else if (status?.kind === "error") {
     headline = "AI view didn't generate.";
     message =
@@ -257,27 +261,30 @@ function AiViewFallback({
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-8">
-      <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-10 text-center fade-in">
+      <div className="text-xs uppercase tracking-wide text-zinc-500 font-medium mb-3">
         AI view
       </div>
-      <h2 className="text-lg font-semibold mb-2">{headline}</h2>
-      <p className="text-sm text-zinc-600 mb-4 leading-relaxed">{message}</p>
-      <p className="text-sm text-zinc-600">
-        <a
+      <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
+        {headline}
+      </h2>
+      <p className="text-sm text-zinc-600 max-w-md mx-auto leading-relaxed mb-5">
+        {message}
+      </p>
+      <div className="flex justify-center gap-3 text-sm">
+        <Link
           href={`/p/${encodeURIComponent(slug)}?view=chrono`}
-          className="text-zinc-900 underline underline-offset-2"
+          className="rounded-full bg-zinc-900 text-white px-4 py-2 no-underline hover:bg-zinc-800 transition-colors"
         >
-          Open chronological view
-        </a>{" "}
-        ·{" "}
+          Open chronological
+        </Link>
         <a
           href={`/p/${encodeURIComponent(slug)}/raw`}
-          className="no-underline hover:underline"
+          className="rounded-full border border-zinc-200 bg-white text-zinc-900 px-4 py-2 no-underline hover:border-zinc-900 transition-colors"
         >
-          download raw JSONL
+          Download raw
         </a>
-      </p>
+      </div>
     </div>
   );
 }
