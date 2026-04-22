@@ -17,7 +17,6 @@
  *   - Off-topic posts collapse out of the way but never disappear.
  */
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
   EyeOff,
@@ -74,39 +73,9 @@ export function DocView({ slug, data }: Props) {
           {view.title}
         </h1>
         <div className="text-base text-zinc-700 leading-relaxed prose-doc">
-          <CitedText text={view.intro} seqToId={entry_seq_to_id} />
+          <CitedText text={view.intro} seqToId={entry_seq_to_id} paragraphs />
         </div>
       </header>
-
-      {/* Conflicting views (surfaced before sections so they're not buried) */}
-      {view.conflicting_views.length > 0 && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50/40 p-5">
-          <h2 className="text-sm font-semibold text-amber-900 mb-3 inline-flex items-center gap-2">
-            <AlertTriangle size={14} strokeWidth={2.25} />
-            Where posters disagree
-          </h2>
-          <ul className="space-y-3">
-            {view.conflicting_views.map((cv, i) => (
-              <li key={i}>
-                <p className="text-sm font-medium text-zinc-900 mb-1.5">
-                  {cv.topic}
-                </p>
-                <ul className="space-y-1 text-sm text-zinc-700">
-                  {cv.perspectives.map((p, j) => (
-                    <li key={j} className="flex gap-2">
-                      <span className="text-amber-700 shrink-0">•</span>
-                      <span>
-                        <CitedText text={p.view} seqToId={entry_seq_to_id} />{" "}
-                        <CitesInline cites={p.cites} seqToId={entry_seq_to_id} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {/* Sections */}
       {view.sections.length === 0 ? (
@@ -122,7 +91,7 @@ export function DocView({ slug, data }: Props) {
                 {renderHeading(s.heading)}
               </h2>
               <div className="text-[15px] text-zinc-800 leading-relaxed prose-doc">
-                <CitedText text={s.summary} seqToId={entry_seq_to_id} />
+                <CitedText text={s.summary} seqToId={entry_seq_to_id} paragraphs />
               </div>
               {s.key_points.length > 0 && (
                 <ul className="mt-4 space-y-2">
@@ -217,8 +186,38 @@ export function DocView({ slug, data }: Props) {
  * The regex matches [#N] with optional comma-separated extras: the LLM is
  * instructed to use exactly that format. Anything that doesn't match
  * passes through as plain text — we never inject HTML from the LLM.
+ *
+ * If `paragraphs` is true, splits on `\n\n` first and wraps each chunk
+ * in a `<p>` so the v2 prompt's multi-paragraph summaries render with
+ * actual paragraph breaks (not collapsed whitespace).
  */
 function CitedText({
+  text,
+  seqToId,
+  paragraphs = false,
+}: {
+  text: string;
+  seqToId: Record<string, string>;
+  paragraphs?: boolean;
+}) {
+  if (paragraphs) {
+    const chunks = text.split(/\n{2,}/);
+    return (
+      <>
+        {chunks.map((chunk, i) => (
+          <p key={i}>
+            <InlineCitations text={chunk} seqToId={seqToId} />
+          </p>
+        ))}
+      </>
+    );
+  }
+  return <InlineCitations text={text} seqToId={seqToId} />;
+}
+
+/** Inline citation parsing — no paragraph splitting. Used for one-line
+ *  fields like key_points.text. */
+function InlineCitations({
   text,
   seqToId,
 }: {

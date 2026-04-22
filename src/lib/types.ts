@@ -96,20 +96,20 @@ export interface DocViewSection {
   }>;
 }
 
-export interface DocViewConflict {
-  topic: string;
-  perspectives: Array<{
-    view: string;
-    cites: number[];
-  }>;
-}
-
 export interface DocView {
   title: string;
   intro: string;
   sections: DocViewSection[];
-  conflicting_views: DocViewConflict[];
   off_topic_seqs: number[];
+  /**
+   * Optional in older payloads; older cached docs may still carry this
+   * field. Renderer ignores it. v2 prompt stops emitting it; per-section
+   * disagreements are folded INTO each section's summary.
+   */
+  conflicting_views?: Array<{
+    topic: string;
+    perspectives: Array<{ view: string; cites: number[] }>;
+  }>;
 }
 
 export interface DocViewResponse {
