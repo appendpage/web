@@ -38,15 +38,23 @@ import {
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { ChainEntry, DocViewResponse, DocViewSection } from "@/lib/types";
 
-/** How many sections to render fully on first paint. The rest collapse
- *  into a "show N more sections" button. */
-const SECTIONS_INITIAL = 6;
-/** How many key_points to render fully per section. The rest collapse
- *  into a per-section "show N more" button. */
+/**
+ * How many sections to render on first paint. We default to "all" because
+ * the Doc View is meant to read like a Wikipedia article (or any
+ * reference long-form), and readers don't expect content to be hidden in
+ * a collapse — clicking a TOC anchor for a hidden section silently
+ * fails. The Phase 2 backend (?max_sections=K) is still there for the
+ * day a page genuinely has 100+ sections; for the typical case of
+ * 5-30 sections, just render the whole article and let the reader
+ * scroll or use the TOC. Keep the chip-row collapse as a fallback only
+ * when section count exceeds SECTIONS_COLLAPSE_THRESHOLD.
+ */
+const SECTIONS_COLLAPSE_THRESHOLD = 30;
+/** How many key_points to render per section before collapsing. */
 const KEY_POINTS_INITIAL = 5;
 /** Show jump-to TOC at top once we have at least this many sections. */
 const TOC_THRESHOLD = 6;
@@ -79,6 +87,41 @@ export function DocView({ slug, data, entries }: Props) {
     return m;
   }, [entries]);
 
+  // Collapse only kicks in for genuinely huge pages; below the
+  // threshold we always render the whole article so anchor links + TOC
+  // navigation just work without surprises. Computed early so the
+  // hash-change effect below can reference it.
+  const collapseEligible = view.sections.length > SECTIONS_COLLAPSE_THRESHOLD;
+
+  // If the page is loaded with a hash (or the user clicks a TOC anchor
+  // for a hidden section) and that section is in the collapsed tail,
+  // auto-expand so the browser actually scrolls there. Without this,
+  // the click is silently dropped because the target element isn't in
+  // the DOM. Runs on every hashchange + once on mount.
+  useEffect(() => {
+    if (!collapseEligible || showAllSections) return;
+    function expandIfTargetIsHidden() {
+      const hash = window.location.hash;
+      if (!hash || !hash.startsWith("#s-")) return;
+      // Hash format: #s-<index>-<slug>. Pull the index.
+      const m = hash.match(/^#s-(\d+)-/);
+      if (!m) return;
+      const idx = parseInt(m[1]!, 10);
+      if (idx >= SECTIONS_COLLAPSE_THRESHOLD) {
+        setShowAllSections(true);
+        // Re-trigger the browser's anchor-scroll after the section
+        // mounts. requestAnimationFrame is enough for the next paint.
+        requestAnimationFrame(() => {
+          const el = document.getElementById(hash.slice(1));
+          if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+    }
+    expandIfTargetIsHidden();
+    window.addEventListener("hashchange", expandIfTargetIsHidden);
+    return () => window.removeEventListener("hashchange", expandIfTargetIsHidden);
+  }, [collapseEligible, showAllSections]);
+
   // For each section, compute the timestamp of its newest member.
   // Sections without member_seqs (legacy v1 cache) get -Infinity so
   // they sort last in "recently active".
@@ -110,13 +153,17 @@ export function DocView({ slug, data, entries }: Props) {
       .slice(0, RECENT_TOP);
   }, [sectionsWithRecency]);
 
-  const visibleSections = showAllSections
-    ? view.sections
-    : view.sections.slice(0, SECTIONS_INITIAL);
-  const hiddenSectionCount = view.sections.length - visibleSections.length;
-  const hiddenSections = showAllSections
-    ? []
-    : view.sections.slice(SECTIONS_INITIAL);
+  // (collapseEligible defined above the hash-change effect.) The actual
+  // visible / hidden split for the current render:
+  const visibleSections =
+    collapseEligible && !showAllSections
+      ? view.sections.slice(0, SECTIONS_COLLAPSE_THRESHOLD)
+      : view.sections;
+  const hiddenSections =
+    collapseEligible && !showAllSections
+      ? view.sections.slice(SECTIONS_COLLAPSE_THRESHOLD)
+      : [];
+  const hiddenSectionCount = hiddenSections.length;
 
   return (
     <article className="space-y-8 fade-in">
@@ -240,29 +287,42 @@ export function DocView({ slug, data, entries }: Props) {
             );
           })}
 
-          {/* Collapsed-section chips + show-all button */}
+          {/* Collapsed-section reveal — only fires above the
+              SECTIONS_COLLAPSE_THRESHOLD. Borrows the GitHub "load
+              more" full-width-bar pattern: clear visual rule, big
+              button, hidden-headings preview underneath as chips so
+              the reader can see what they'd be expanding to. */}
           {hiddenSectionCount > 0 && (
-            <div className="border-t border-zinc-100 pt-6 space-y-4">
-              <div className="flex flex-wrap gap-1.5">
-                {hiddenSections.map((s, i) => (
-                  <SectionChip
-                    key={i}
-                    section={s}
-                    index={SECTIONS_INITIAL + i}
-                  />
-                ))}
-              </div>
+            <div className="border-t border-zinc-200 pt-8 space-y-4">
               <button
                 type="button"
                 onClick={() => setShowAllSections(true)}
-                className="inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+                className="w-full rounded-xl border-2 border-dashed border-zinc-300 hover:border-zinc-900 hover:bg-zinc-50 px-6 py-4 transition-colors group"
               >
-                <Plus size={14} strokeWidth={2.25} />
-                Show all {view.sections.length} sections
-                <span className="text-xs text-zinc-400">
-                  (+{hiddenSectionCount} more)
+                <span className="flex items-center justify-center gap-2 text-base font-medium text-zinc-700 group-hover:text-zinc-900">
+                  <Plus size={18} strokeWidth={2.25} />
+                  Show {hiddenSectionCount} more{" "}
+                  {hiddenSectionCount === 1 ? "section" : "sections"}
+                </span>
+                <span className="block mt-1 text-xs text-zinc-500">
+                  {view.sections.length} sections total — currently
+                  showing {SECTIONS_COLLAPSE_THRESHOLD}
                 </span>
               </button>
+              <div className="flex flex-wrap gap-1.5 justify-center">
+                {hiddenSections.slice(0, 12).map((s, i) => (
+                  <SectionChip
+                    key={i}
+                    section={s}
+                    index={SECTIONS_COLLAPSE_THRESHOLD + i}
+                  />
+                ))}
+                {hiddenSections.length > 12 && (
+                  <span className="text-xs text-zinc-400 self-center">
+                    +{hiddenSections.length - 12} more
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -389,13 +449,13 @@ function SectionRender({
             </li>
           ))}
           {hiddenKpCount > 0 && (
-            <li>
+            <li className="!mt-3">
               <button
                 type="button"
                 onClick={() => setShowAllKeyPoints(true)}
-                className="ml-5 text-xs text-zinc-500 hover:text-zinc-900 transition-colors inline-flex items-center gap-1"
+                className="ml-5 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-900 hover:bg-white hover:text-zinc-900 transition-colors"
               >
-                <Plus size={11} strokeWidth={2.25} />
+                <Plus size={12} strokeWidth={2.5} />
                 Show {hiddenKpCount} more key{" "}
                 {hiddenKpCount === 1 ? "point" : "points"}
               </button>
