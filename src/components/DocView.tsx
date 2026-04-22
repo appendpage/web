@@ -5,9 +5,21 @@
  * with inline `[#N]` citation markers that link to the underlying entries.
  *
  * Renders the DocViewResponse from /p/<slug>/views/doc. Citation markers
- * are parsed out of free-text strings (intro, summary, key_points.text,
- * conflicting_views.perspectives.view) and turned into clickable
- * superscript footnote links pointing at #e-<entry_id>.
+ * are parsed out of free-text strings (intro, summary, key_points.text)
+ * and turned into clickable superscript footnote links pointing at
+ * #e-<entry_id>.
+ *
+ * Phase 2: gradual loading.
+ *   - Top SECTIONS_INITIAL sections render fully expanded above the fold;
+ *     remaining sections collapse into a "Show N more" toggle so the
+ *     initial paint stays scannable even when N grows large.
+ *   - Within each section, the first KEY_POINTS_INITIAL key_points render
+ *     by default; if the section has more, a per-section "Show N more"
+ *     button reveals them inline.
+ *   - All data is already in the SSR payload — these are pure client-
+ *     side collapses, no extra fetches. The /views/doc/sections/<key>
+ *     endpoint exists for future use when section count is in the
+ *     hundreds and we want to drop them from SSR entirely.
  *
  * Design goals:
  *   - Looks like a curated review article, not a forum.
@@ -17,25 +29,94 @@
  *   - Off-topic posts collapse out of the way but never disappear.
  */
 import {
+  Activity,
   ChevronDown,
   ChevronRight,
   EyeOff,
   Loader2,
+  Plus,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
-import type { DocViewResponse } from "@/lib/types";
+import type { ChainEntry, DocViewResponse, DocViewSection } from "@/lib/types";
+
+/** How many sections to render fully on first paint. The rest collapse
+ *  into a "show N more sections" button. */
+const SECTIONS_INITIAL = 6;
+/** How many key_points to render fully per section. The rest collapse
+ *  into a per-section "show N more" button. */
+const KEY_POINTS_INITIAL = 5;
+/** Show jump-to TOC at top once we have at least this many sections. */
+const TOC_THRESHOLD = 6;
+/** Top-K most-recent sections to surface in the "Recently active" callout. */
+const RECENT_TOP = 3;
+/** A section is "new" if its newest member was posted within this many ms. */
+const NEW_BADGE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 
 interface Props {
   slug: string;
   data: DocViewResponse;
+  /** All entries on the page; used for per-section recency UI. */
+  entries: ChainEntry[];
 }
 
-export function DocView({ slug, data }: Props) {
+export function DocView({ slug, data, entries }: Props) {
   const { view, entry_seq_to_id, stale, entries_since_cache } = data;
+  const [showAllSections, setShowAllSections] = useState(false);
   const [showOffTopic, setShowOffTopic] = useState(false);
+
+  // seq -> created_at_ms, used for recency badges + "Recently active"
+  // callout. Computed once per page load; entries already SSR'd by
+  // PageView so this is cheap.
+  const seqToCreatedMs = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const e of entries) {
+      const t = Date.parse(e.created_at);
+      if (Number.isFinite(t)) m.set(e.seq, t);
+    }
+    return m;
+  }, [entries]);
+
+  // For each section, compute the timestamp of its newest member.
+  // Sections without member_seqs (legacy v1 cache) get -Infinity so
+  // they sort last in "recently active".
+  const sectionsWithRecency = useMemo(() => {
+    return view.sections.map((s, i) => {
+      let newestMs = -Infinity;
+      let newestSeq = -1;
+      for (const seq of s.member_seqs ?? []) {
+        const t = seqToCreatedMs.get(seq);
+        if (t !== undefined && t > newestMs) {
+          newestMs = t;
+          newestSeq = seq;
+        }
+      }
+      return { section: s, originalIndex: i, newestMs, newestSeq };
+    });
+  }, [view.sections, seqToCreatedMs]);
+
+  // "Recently active" callout: top RECENT_TOP sections by newestMs desc.
+  // Skip the callout entirely when there are too few sections OR no
+  // section has a meaningful newestMs (e.g. all v1-cached without
+  // member_seqs).
+  const recentlyActive = useMemo(() => {
+    if (sectionsWithRecency.length < 4) return [];
+    const withTime = sectionsWithRecency.filter((x) => x.newestMs > 0);
+    if (withTime.length === 0) return [];
+    return [...withTime]
+      .sort((a, b) => b.newestMs - a.newestMs)
+      .slice(0, RECENT_TOP);
+  }, [sectionsWithRecency]);
+
+  const visibleSections = showAllSections
+    ? view.sections
+    : view.sections.slice(0, SECTIONS_INITIAL);
+  const hiddenSectionCount = view.sections.length - visibleSections.length;
+  const hiddenSections = showAllSections
+    ? []
+    : view.sections.slice(SECTIONS_INITIAL);
 
   return (
     <article className="space-y-8 fade-in">
@@ -77,6 +158,64 @@ export function DocView({ slug, data }: Props) {
         </div>
       </header>
 
+      {/* "Recently active" callout — surfaces the top sections by newest
+          member post, so returning visitors see what's new without
+          having sections shift position in the body (which is sorted
+          alphabetically for stability). */}
+      {recentlyActive.length > 0 && (
+        <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-4">
+          <h2 className="text-xs font-semibold text-emerald-900 mb-2.5 inline-flex items-center gap-1.5 uppercase tracking-wide">
+            <Activity size={12} strokeWidth={2.5} />
+            Recently active
+          </h2>
+          <ul className="space-y-1.5 text-sm">
+            {recentlyActive.map((r) => (
+              <li key={r.originalIndex} className="flex items-baseline gap-2.5">
+                <a
+                  href={`#${sectionAnchor(r.section.heading, r.originalIndex)}`}
+                  className="text-zinc-800 hover:text-zinc-900 no-underline font-medium"
+                >
+                  {renderHeading(r.section.heading)}
+                </a>
+                <span className="text-xs text-zinc-500">
+                  {formatRelativeTime(r.newestMs)}
+                </span>
+                <span className="text-xs text-zinc-400 tabular-nums font-mono">
+                  · {r.section.member_seqs?.length ?? 0}{" "}
+                  {(r.section.member_seqs?.length ?? 0) === 1 ? "post" : "posts"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Jump-to TOC — appears once we have enough sections that
+          scrolling-to-find becomes painful. Pure anchor links to each
+          section header. Not sticky (keeps mobile clean); a single
+          horizontal scroll on narrow screens. */}
+      {view.sections.length >= TOC_THRESHOLD && (
+        <nav
+          aria-label="Sections"
+          className="border-y border-zinc-200 -mx-2 px-2 py-3 overflow-x-auto"
+        >
+          <div className="flex flex-wrap gap-x-3 gap-y-1.5 text-xs">
+            <span className="text-zinc-500 uppercase tracking-wide font-medium">
+              Sections:
+            </span>
+            {view.sections.map((s, i) => (
+              <a
+                key={i}
+                href={`#${sectionAnchor(s.heading, i)}`}
+                className="text-zinc-700 hover:text-zinc-900 no-underline whitespace-nowrap"
+              >
+                {s.heading}
+              </a>
+            ))}
+          </div>
+        </nav>
+      )}
+
       {/* Sections */}
       {view.sections.length === 0 ? (
         <p className="text-sm text-zinc-500 italic">
@@ -85,34 +224,50 @@ export function DocView({ slug, data }: Props) {
         </p>
       ) : (
         <div className="space-y-9">
-          {view.sections.map((s, i) => (
-            <section key={i}>
-              <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-3">
-                {renderHeading(s.heading)}
-              </h2>
-              <div className="text-[15px] text-zinc-800 leading-relaxed prose-doc">
-                <CitedText text={s.summary} seqToId={entry_seq_to_id} paragraphs />
+          {visibleSections.map((s, i) => {
+            const recency = sectionsWithRecency[i]!;
+            return (
+              <SectionRender
+                key={i}
+                section={s}
+                index={i}
+                seqToId={entry_seq_to_id}
+                isNew={
+                  recency.newestMs > 0 &&
+                  Date.now() - recency.newestMs <= NEW_BADGE_WINDOW_MS
+                }
+              />
+            );
+          })}
+
+          {/* Collapsed-section chips + show-all button */}
+          {hiddenSectionCount > 0 && (
+            <div className="border-t border-zinc-100 pt-6 space-y-4">
+              <div className="flex flex-wrap gap-1.5">
+                {hiddenSections.map((s, i) => (
+                  <SectionChip
+                    key={i}
+                    section={s}
+                    index={SECTIONS_INITIAL + i}
+                  />
+                ))}
               </div>
-              {s.key_points.length > 0 && (
-                <ul className="mt-4 space-y-2">
-                  {s.key_points.map((kp, j) => (
-                    <li
-                      key={j}
-                      className="flex gap-2.5 text-sm text-zinc-800 leading-relaxed"
-                    >
-                      <span className="text-zinc-300 mt-1.5 shrink-0">•</span>
-                      <span>
-                        <CitedText text={kp.text} seqToId={entry_seq_to_id} />{" "}
-                        <CitesInline cites={kp.cites} seqToId={entry_seq_to_id} />
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-          ))}
+              <button
+                type="button"
+                onClick={() => setShowAllSections(true)}
+                className="inline-flex items-center gap-2 text-sm text-zinc-600 hover:text-zinc-900 transition-colors"
+              >
+                <Plus size={14} strokeWidth={2.25} />
+                Show all {view.sections.length} sections
+                <span className="text-xs text-zinc-400">
+                  (+{hiddenSectionCount} more)
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
+
 
       {/* Off-topic posts collapsed */}
       {view.off_topic_seqs.length > 0 && (
@@ -175,6 +330,154 @@ export function DocView({ slug, data }: Props) {
       </p>
     </article>
   );
+}
+
+// ---------- section rendering ----------
+
+/**
+ * Render one section: heading + summary + paginated key_points.
+ * The first KEY_POINTS_INITIAL key_points show by default; clicking
+ * "Show N more" reveals the rest in place.
+ *
+ * Each section has a stable anchor id (computed from heading + index)
+ * so the jump-to TOC and the "Recently active" callout can link
+ * directly to it.
+ */
+function SectionRender({
+  section,
+  index,
+  seqToId,
+  isNew,
+}: {
+  section: DocViewSection;
+  index: number;
+  seqToId: Record<string, string>;
+  isNew: boolean;
+}) {
+  const [showAllKeyPoints, setShowAllKeyPoints] = useState(false);
+  const visibleKp = showAllKeyPoints
+    ? section.key_points
+    : section.key_points.slice(0, KEY_POINTS_INITIAL);
+  const hiddenKpCount = section.key_points.length - visibleKp.length;
+  const anchor = sectionAnchor(section.heading, index);
+
+  return (
+    <section id={anchor} className="scroll-mt-4">
+      <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-3 inline-flex items-baseline flex-wrap gap-2">
+        <span>{renderHeading(section.heading)}</span>
+        {isNew && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200/70 rounded-full px-2 py-0.5 leading-none">
+            new
+          </span>
+        )}
+      </h2>
+      <div className="text-[15px] text-zinc-800 leading-relaxed prose-doc">
+        <CitedText text={section.summary} seqToId={seqToId} paragraphs />
+      </div>
+      {section.key_points.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {visibleKp.map((kp, j) => (
+            <li
+              key={j}
+              className="flex gap-2.5 text-sm text-zinc-800 leading-relaxed"
+            >
+              <span className="text-zinc-300 mt-1.5 shrink-0">•</span>
+              <span>
+                <CitedText text={kp.text} seqToId={seqToId} />{" "}
+                <CitesInline cites={kp.cites} seqToId={seqToId} />
+              </span>
+            </li>
+          ))}
+          {hiddenKpCount > 0 && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setShowAllKeyPoints(true)}
+                className="ml-5 text-xs text-zinc-500 hover:text-zinc-900 transition-colors inline-flex items-center gap-1"
+              >
+                <Plus size={11} strokeWidth={2.25} />
+                Show {hiddenKpCount} more key{" "}
+                {hiddenKpCount === 1 ? "point" : "points"}
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Compact preview of a collapsed section: heading + member count, in
+ * a single tappable chip. Clicking it jumps to the section's anchor
+ * (the section is below in DOM, just hidden behind "Show all sections").
+ * The chip is a real anchor link so the browser can jump even when the
+ * section isn't expanded — we use scrollIntoView via the click handler
+ * combined with showAll. For now it's a simple anchor.
+ */
+function SectionChip({
+  section,
+  index,
+}: {
+  section: DocViewSection;
+  index: number;
+}) {
+  const memberCount = section.member_seqs?.length ?? 0;
+  const anchor = sectionAnchor(section.heading, index);
+  return (
+    <a
+      href={`#${anchor}`}
+      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 no-underline hover:border-zinc-900 transition-colors"
+      title={
+        memberCount > 0
+          ? `${section.heading} — ${memberCount} ${memberCount === 1 ? "post" : "posts"}`
+          : section.heading
+      }
+    >
+      <span className="truncate max-w-[20rem]">
+        {renderHeading(section.heading)}
+      </span>
+      {memberCount > 0 && (
+        <span className="font-mono tabular-nums text-zinc-400">
+          {memberCount}
+        </span>
+      )}
+    </a>
+  );
+}
+
+/**
+ * Build a stable URL anchor for a section. Uses the heading slug for
+ * readability + the section index as a tiebreaker (in case two sections
+ * happen to slugify to the same string, which shouldn't happen given
+ * subjects come from entry_tags but is cheap insurance).
+ */
+function sectionAnchor(heading: string, index: number): string {
+  const slug = heading
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return `s-${index}-${slug || "section"}`;
+}
+
+/** "12m ago", "3h ago", "2d ago" — used by the "Recently active" callout. */
+function formatRelativeTime(ms: number): string {
+  const delta = Date.now() - ms;
+  if (delta < 0) return "just now";
+  const minutes = Math.floor(delta / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // ---------- citation rendering ----------

@@ -147,7 +147,7 @@ export function PageView({
       {view === "doc" && (
         <>
           {docView?.kind === "ok" ? (
-            <DocView slug={slug} data={docView.data} />
+            <DocView slug={slug} data={docView.data} entries={entries} />
           ) : (
             <DocViewFallback
               slug={slug}

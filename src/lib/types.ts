@@ -94,6 +94,10 @@ export interface DocViewSection {
     text: string;
     cites: number[]; // entry sequence numbers
   }>;
+  /** Phase 2: entry seqs that belong to this section (set by docview-v2). */
+  member_seqs?: number[];
+  /** Phase 2: total key_points in the unpaginated section. */
+  total_key_points?: number;
 }
 
 export interface DocView {
@@ -101,6 +105,9 @@ export interface DocView {
   intro: string;
   sections: DocViewSection[];
   off_topic_seqs: number[];
+  /** Phase 2: total sections in the unpaginated doc (vs sections.length
+   *  when the response was truncated to ?max_sections=K). */
+  total_sections?: number;
   /**
    * Optional in older payloads; older cached docs may still carry this
    * field. Renderer ignores it. v2 prompt stops emitting it; per-section
