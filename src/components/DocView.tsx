@@ -34,7 +34,6 @@ import {
   ChevronRight,
   EyeOff,
   Loader2,
-  Plus,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
@@ -300,13 +299,9 @@ export function DocView({ slug, data, entries }: Props) {
                 className="w-full rounded-xl border-2 border-dashed border-zinc-300 hover:border-zinc-900 hover:bg-zinc-50 px-6 py-4 transition-colors group"
               >
                 <span className="flex items-center justify-center gap-2 text-base font-medium text-zinc-700 group-hover:text-zinc-900">
-                  <Plus size={18} strokeWidth={2.25} />
+                  <ChevronDown size={18} strokeWidth={2.25} />
                   Show {hiddenSectionCount} more{" "}
                   {hiddenSectionCount === 1 ? "section" : "sections"}
-                </span>
-                <span className="block mt-1 text-xs text-zinc-500">
-                  {view.sections.length} sections total — currently
-                  showing {SECTIONS_COLLAPSE_THRESHOLD}
                 </span>
               </button>
               <div className="flex flex-wrap gap-1.5 justify-center">
@@ -455,7 +450,7 @@ function SectionRender({
                 onClick={() => setShowAllKeyPoints(true)}
                 className="ml-5 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-900 hover:bg-white hover:text-zinc-900 transition-colors"
               >
-                <Plus size={12} strokeWidth={2.5} />
+                <ChevronDown size={12} strokeWidth={2.5} />
                 Show {hiddenKpCount} more key{" "}
                 {hiddenKpCount === 1 ? "point" : "points"}
               </button>
