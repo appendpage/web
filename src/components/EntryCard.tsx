@@ -1,6 +1,6 @@
 "use client";
 
-import { CornerDownRight, Reply, Shield } from "lucide-react";
+import { AtSign, CornerDownRight, Reply, Shield } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useState } from "react";
@@ -19,26 +19,68 @@ interface Props {
    * a few seconds after a successful POST.
    */
   justPosted?: boolean;
+  /**
+   * When true, renders a slimmer card meant to live INSIDE a ThreadGroup
+   * underneath its root entry. We drop the "replying to:" pill (the visual
+   * indent + thread structure already conveys parent context) and tighten
+   * padding/font so a thread of replies doesn't visually overpower its
+   * root post.
+   */
+  compact?: boolean;
+  /**
+   * Seq of this entry's IMMEDIATE parent inside its thread. When provided
+   * AND the parent is NOT the thread root, render a small "@#N" tag so the
+   * reader can tell which sibling reply this entry is answering.
+   * `directParentSeq === thread.root.seq` is the implied common case
+   * (replies to the root) and gets no tag — the indent already says it.
+   */
+  directParentSeq?: number;
+  /** The thread root's seq, used to decide whether to show the @#N tag. */
+  threadRootSeq?: number;
 }
 
-export function EntryCard({ entry, body, parentSnippet, onReply, justPosted }: Props) {
+export function EntryCard({
+  entry,
+  body,
+  parentSnippet,
+  onReply,
+  justPosted,
+  compact,
+  directParentSeq,
+  threadRootSeq,
+}: Props) {
   const [showHash, setShowHash] = useState(false);
   const isModeration = entry.kind === "moderation";
   const erased = body?.erased ?? false;
   const text = body?.body ?? null;
 
+  // Show "@#N" only when this is a reply-to-a-reply WITHIN a thread, i.e.
+  // the immediate parent is some other descendant rather than the thread
+  // root. Direct replies to the root get no tag (the indent says it all).
+  const showAtMention =
+    compact &&
+    typeof directParentSeq === "number" &&
+    typeof threadRootSeq === "number" &&
+    directParentSeq !== threadRootSeq;
+
   return (
     <article
       id={`e-${entry.id}`}
       className={[
-        "group rounded-2xl border bg-white px-6 py-5 transition-all",
-        isModeration
-          ? "border-amber-200/80 bg-amber-50/30"
-          : "border-zinc-200 hover:border-zinc-300",
+        "group rounded-2xl border bg-white transition-all",
+        compact
+          ? "px-4 py-3 border-zinc-100 hover:border-zinc-200"
+          : "px-6 py-5 border-zinc-200 hover:border-zinc-300",
+        isModeration ? "border-amber-200/80 bg-amber-50/30" : "",
         justPosted ? "post-flash" : "",
       ].filter(Boolean).join(" ")}
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-3">
+      <header
+        className={[
+          "flex flex-wrap items-center justify-between gap-3",
+          compact ? "mb-2" : "mb-3",
+        ].join(" ")}
+      >
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
           <span className="font-mono text-zinc-400">#{entry.seq}</span>
           <span className="text-zinc-300">·</span>
@@ -51,7 +93,17 @@ export function EntryCard({ entry, body, parentSnippet, onReply, justPosted }: P
               Moderator
             </span>
           )}
-          {parentSnippet && (
+          {showAtMention && (
+            <a
+              href={`#e-${entry.parent}`}
+              className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-zinc-100 text-zinc-700 px-2 py-0.5 text-[11px] font-mono no-underline hover:bg-zinc-200 transition-colors"
+              title={`Reply to #${directParentSeq}`}
+            >
+              <AtSign size={10} strokeWidth={2.25} />
+              <span>#{directParentSeq}</span>
+            </a>
+          )}
+          {!compact && parentSnippet && (
             <a
               href={`#e-${entry.parent}`}
               className="ml-1 inline-flex items-center gap-1 rounded-full bg-zinc-100 text-zinc-700 px-2.5 py-0.5 text-xs no-underline hover:bg-zinc-200 transition-colors"
@@ -74,7 +126,7 @@ export function EntryCard({ entry, body, parentSnippet, onReply, justPosted }: P
         </button>
       </header>
 
-      <div className="prose-entry">
+      <div className={compact ? "prose-entry text-sm" : "prose-entry"}>
         {erased ? (
           <p className="italic text-zinc-500">
             [body erased
@@ -93,13 +145,16 @@ export function EntryCard({ entry, body, parentSnippet, onReply, justPosted }: P
         )}
       </div>
 
-      <footer className="mt-4 flex items-center gap-3">
+      <footer className={compact ? "mt-2 flex items-center gap-3" : "mt-4 flex items-center gap-3"}>
         <button
           type="button"
           onClick={() => onReply(entry)}
-          className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 transition-colors"
+          className={[
+            "inline-flex items-center gap-1.5 text-zinc-500 hover:text-zinc-900 transition-colors",
+            compact ? "text-xs" : "text-sm",
+          ].join(" ")}
         >
-          <Reply size={14} strokeWidth={2} />
+          <Reply size={compact ? 12 : 14} strokeWidth={2} />
           Reply
         </button>
       </footer>

@@ -9,10 +9,11 @@ import type {
   DocViewResponse,
   EntryWithBody,
 } from "@/lib/types";
+import { groupIntoThreads } from "@/lib/threads";
 import { CodeBlock } from "./CodeBlock";
 import { Composer } from "./Composer";
 import { DocView } from "./DocView";
-import { EntryCard } from "./EntryCard";
+import { ThreadGroup } from "./ThreadGroup";
 import { ViewSwitcher, type ViewId } from "./ViewSwitcher";
 
 interface Props {
@@ -210,6 +211,15 @@ function ChronoView({
   onReply: (e: ChainEntry) => void;
   justPostedId: string | null;
 }) {
+  // Group the flat chain into Xiaohongshu/Threads-style 1-level threads:
+  // each top-level post anchors its descendants underneath, sorted oldest-
+  // first within the thread so the conversation reads top-to-bottom.
+  // Threads themselves are sorted by latest activity DESC, so threads with
+  // recent replies bubble to the top — engagement-style ordering that
+  // matches reader expectations on conversational platforms. The Raw view
+  // remains the strict-chronological JSONL firehose for power users.
+  const threads = useMemo(() => groupIntoThreads(entries), [entries]);
+
   if (entries.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/60 p-12 text-center">
@@ -222,26 +232,17 @@ function ChronoView({
     );
   }
 
-  const ordered = [...entries].reverse();
-
   return (
-    <div className="space-y-3 fade-in">
-      {ordered.map((e) => {
-        const parentSnippet =
-          e.parent && bodies[e.parent]?.body
-            ? bodies[e.parent]!.body!.replace(/\s+/g, " ")
-            : undefined;
-        return (
-          <EntryCard
-            key={e.id}
-            entry={e}
-            body={bodies[e.id] ?? null}
-            parentSnippet={parentSnippet}
-            onReply={onReply}
-            justPosted={e.id === justPostedId}
-          />
-        );
-      })}
+    <div className="space-y-5 fade-in">
+      {threads.map((t) => (
+        <ThreadGroup
+          key={t.root.id}
+          thread={t}
+          bodies={bodies}
+          onReply={onReply}
+          justPostedId={justPostedId}
+        />
+      ))}
     </div>
   );
 }
