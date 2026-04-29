@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useState } from "react";
 
 import type { ChainEntry, EntryWithBody } from "@/lib/types";
+import { Highlight } from "./Highlight";
 
 interface Props {
   entry: ChainEntry;
@@ -37,6 +38,16 @@ interface Props {
   directParentSeq?: number;
   /** The thread root's seq, used to decide whether to show the @#N tag. */
   threadRootSeq?: number;
+  /**
+   * In-page search query (already normalized — lowercased, trimmed).
+   * When non-empty, the body renders as plain text wrapped in <Highlight>
+   * so matches are visually marked. Markdown formatting is intentionally
+   * traded away while searching: the goal is to FIND text, not to enjoy
+   * prose, and a hybrid markdown+highlight renderer would be a lot of
+   * code for marginal benefit. Reverts to ReactMarkdown when the search
+   * is cleared.
+   */
+  highlight?: string;
 }
 
 export function EntryCard({
@@ -48,6 +59,7 @@ export function EntryCard({
   compact,
   directParentSeq,
   threadRootSeq,
+  highlight = "",
 }: Props) {
   const [showHash, setShowHash] = useState(false);
   const isModeration = entry.kind === "moderation";
@@ -133,13 +145,25 @@ export function EntryCard({
             {body?.erased_reason ? `: ${body.erased_reason}` : ""}]
           </p>
         ) : text ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            disallowedElements={["script", "iframe", "style", "img"]}
-            unwrapDisallowed
-          >
-            {text}
-          </ReactMarkdown>
+          highlight ? (
+            // Search active: render plain text with <Highlight> so matches
+            // are marked. Preserves paragraph breaks via simple split on
+            // blank lines; gives up other markdown formatting until the
+            // search is cleared.
+            text.split(/\n\n+/).map((para, i) => (
+              <p key={i} className="whitespace-pre-wrap">
+                <Highlight text={para} q={highlight} />
+              </p>
+            ))
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              disallowedElements={["script", "iframe", "style", "img"]}
+              unwrapDisallowed
+            >
+              {text}
+            </ReactMarkdown>
+          )
         ) : (
           <p className="text-zinc-300">[loading…]</p>
         )}

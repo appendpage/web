@@ -2,6 +2,7 @@
 
 import { Check, ChevronRight, Download, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
@@ -9,10 +10,12 @@ import type {
   DocViewResponse,
   EntryWithBody,
 } from "@/lib/types";
+import { normalizeQuery } from "@/lib/search";
 import { groupIntoThreads } from "@/lib/threads";
 import { CodeBlock } from "./CodeBlock";
 import { Composer } from "./Composer";
 import { DocView } from "./DocView";
+import { SearchBar } from "./SearchBar";
 import { ThreadGroup } from "./ThreadGroup";
 import { ViewSwitcher, type ViewId } from "./ViewSwitcher";
 
@@ -101,6 +104,12 @@ export function PageView({
     return m;
   }, [entries]);
 
+  // In-page search query (?q=) — single source of truth for both views.
+  // Normalized once here so DocView/ChronoView/EntryCard all share the
+  // same lowercased substring without duplicating the trim/lowercase.
+  const search = useSearchParams();
+  const normalizedQ = normalizeQuery(search.get("q"));
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-10 sm:py-14">
       {/* Page header */}
@@ -139,16 +148,24 @@ export function PageView({
         </div>
       </header>
 
-      {/* Pill bar */}
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
+      {/* Pill bar + in-page search. Search bar hides in the Raw view since
+          Raw is a JSONL firehose for tools/verification, not a browse
+          surface — Cmd-F or grep is the right tool there. */}
+      <div className="mb-8 flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3">
         <ViewSwitcher current={view} />
+        {view !== "raw" && <SearchBar />}
       </div>
 
       {/* Active view */}
       {view === "doc" && (
         <>
           {docView?.kind === "ok" ? (
-            <DocView slug={slug} data={docView.data} entries={entries} />
+            <DocView
+              slug={slug}
+              data={docView.data}
+              entries={entries}
+              q={normalizedQ}
+            />
           ) : (
             <DocViewFallback
               slug={slug}
@@ -166,6 +183,7 @@ export function PageView({
           entriesById={entriesById}
           onReply={setReplyTo}
           justPostedId={justPostedId}
+          q={normalizedQ}
         />
       )}
 
@@ -204,12 +222,15 @@ function ChronoView({
   bodies,
   onReply,
   justPostedId,
+  q,
 }: {
   entries: ChainEntry[];
   bodies: Record<string, EntryWithBody>;
   entriesById: Map<string, ChainEntry>;
   onReply: (e: ChainEntry) => void;
   justPostedId: string | null;
+  /** Already-normalized search query. Empty string => no filter. */
+  q: string;
 }) {
   // Group the flat chain into Xiaohongshu/Threads-style 1-level threads:
   // each top-level post anchors its descendants underneath, sorted oldest-
@@ -219,6 +240,41 @@ function ChronoView({
   // matches reader expectations on conversational platforms. The Raw view
   // remains the strict-chronological JSONL firehose for power users.
   const threads = useMemo(() => groupIntoThreads(entries), [entries]);
+
+  // Filter threads by query. A thread "matches" if any member's body
+  // contains the query substring (case-insensitive). When q is non-empty,
+  // we also pass forceExpandAll=true into ThreadGroup so any matching
+  // descendant comes out of hiding instead of being silently truncated
+  // by the REPLIES_INITIAL=2 cap.
+  const filteredThreads = useMemo(() => {
+    if (!q) return threads;
+    return threads.filter((t) => {
+      const rootBody = bodies[t.root.id]?.body;
+      if (rootBody && rootBody.toLowerCase().includes(q)) return true;
+      for (const d of t.descendants) {
+        const b = bodies[d.entry.id]?.body;
+        if (b && b.toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }, [threads, q, bodies]);
+
+  // Match-count banner: count threads that survived the filter and the
+  // total number of (thread, matching-entry) pairs so the user gets a
+  // clear "5 matches across 3 threads" affordance.
+  const matchCounts = useMemo(() => {
+    if (!q) return { threads: 0, entries: 0 };
+    let entryCount = 0;
+    for (const t of filteredThreads) {
+      const rootBody = bodies[t.root.id]?.body;
+      if (rootBody && rootBody.toLowerCase().includes(q)) entryCount++;
+      for (const d of t.descendants) {
+        const b = bodies[d.entry.id]?.body;
+        if (b && b.toLowerCase().includes(q)) entryCount++;
+      }
+    }
+    return { threads: filteredThreads.length, entries: entryCount };
+  }, [filteredThreads, q, bodies]);
 
   if (entries.length === 0) {
     return (
@@ -232,15 +288,44 @@ function ChronoView({
     );
   }
 
+  if (q && filteredThreads.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/60 p-10 text-center fade-in">
+        <p className="text-base font-medium text-zinc-900">
+          No posts match{" "}
+          <span className="font-mono bg-zinc-100 rounded px-1.5 py-0.5">{q}</span>
+          .
+        </p>
+        <p className="mt-2 text-sm text-zinc-500 max-w-sm mx-auto">
+          Try another spelling, or switch to the Doc view to see if a section
+          mentions it.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 fade-in">
-      {threads.map((t) => (
+      {q && (
+        <p className="text-xs text-zinc-500">
+          <span className="font-mono tabular-nums text-zinc-700">
+            {matchCounts.entries}
+          </span>{" "}
+          {matchCounts.entries === 1 ? "match" : "matches"} across{" "}
+          <span className="font-mono tabular-nums text-zinc-700">
+            {matchCounts.threads}
+          </span>{" "}
+          {matchCounts.threads === 1 ? "thread" : "threads"}
+        </p>
+      )}
+      {filteredThreads.map((t) => (
         <ThreadGroup
           key={t.root.id}
           thread={t}
           bodies={bodies}
           onReply={onReply}
           justPostedId={justPostedId}
+          q={q}
         />
       ))}
     </div>

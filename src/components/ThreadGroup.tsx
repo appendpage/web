@@ -40,6 +40,13 @@ interface Props {
   bodies: Record<string, EntryWithBody>;
   onReply: (entry: ChainEntry) => void;
   justPostedId: string | null;
+  /**
+   * In-page search query, already normalized (lowercased, trimmed). When
+   * non-empty, the thread renders ALL descendants (skipping the
+   * REPLIES_INITIAL=2 collapse) so a matching reply deep in the tail is
+   * visible, and the body text in each EntryCard is highlighted.
+   */
+  q?: string;
 }
 
 /** How many replies to show by default before collapsing the rest behind
@@ -53,17 +60,26 @@ export function ThreadGroup({
   bodies,
   onReply,
   justPostedId,
+  q = "",
 }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const totalReplies = thread.descendants.length;
+  // When a search query is active, force-expand the thread so any matching
+  // reply (potentially deep in the tail) is visible. The collapse toggle
+  // is intentionally still rendered (so the user can re-collapse), but it
+  // starts open.
+  const forceExpandAll = q !== "";
+  const effectivelyExpanded = expanded || forceExpandAll;
   const collapseEligible = totalReplies > REPLIES_INITIAL;
   const visibleReplies =
-    collapseEligible && !expanded
+    collapseEligible && !effectivelyExpanded
       ? thread.descendants.slice(0, REPLIES_INITIAL)
       : thread.descendants;
   const hiddenReplyCount =
-    collapseEligible && !expanded ? totalReplies - REPLIES_INITIAL : 0;
+    collapseEligible && !effectivelyExpanded
+      ? totalReplies - REPLIES_INITIAL
+      : 0;
 
   // If the user just posted a reply that lands inside this thread but is
   // currently hidden behind the collapse, auto-expand so the post-flash is
@@ -85,6 +101,7 @@ export function ThreadGroup({
         body={bodies[thread.root.id] ?? null}
         onReply={onReply}
         justPosted={thread.root.id === justPostedId}
+        highlight={q}
       />
       {totalReplies > 0 && (
         <div className="ml-6 sm:ml-10 border-l-2 border-zinc-100 pl-4 sm:pl-5 space-y-2">
@@ -98,6 +115,7 @@ export function ThreadGroup({
               compact
               directParentSeq={d.directParentSeq}
               threadRootSeq={thread.root.seq}
+              highlight={q}
             />
           ))}
           {(hiddenReplyCount > 0 || expanded) && collapseEligible && (

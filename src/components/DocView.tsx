@@ -39,7 +39,10 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { countMatches } from "@/lib/search";
 import type { ChainEntry, DocViewResponse, DocViewSection } from "@/lib/types";
+
+import { Highlight } from "./Highlight";
 
 /**
  * How many sections to render on first paint. We default to "all" because
@@ -67,9 +70,19 @@ interface Props {
   data: DocViewResponse;
   /** All entries on the page; used for per-section recency UI. */
   entries: ChainEntry[];
+  /**
+   * In-page search query (already normalized — lowercased, trimmed).
+   * When non-empty, sections are filtered down to those whose
+   * heading + summary + key_points text matches; matches inside
+   * normally-collapsed content (the section tail or the per-section
+   * key_points tail) are force-expanded so the reader actually sees the
+   * hit. Match-count banner above the section list, empty-state when
+   * nothing matches.
+   */
+  q?: string;
 }
 
-export function DocView({ slug, data, entries }: Props) {
+export function DocView({ slug, data, entries, q = "" }: Props) {
   const { view, entry_seq_to_id, stale, entries_since_cache } = data;
   const [showAllSections, setShowAllSections] = useState(false);
   const [showOffTopic, setShowOffTopic] = useState(false);
@@ -152,14 +165,49 @@ export function DocView({ slug, data, entries }: Props) {
       .slice(0, RECENT_TOP);
   }, [sectionsWithRecency]);
 
+  // Filter sections by the in-page search query. A section matches if its
+  // heading, summary, or any key_point text contains the substring. When
+  // q is non-empty we ALSO force-show every key_point inside the
+  // surviving sections (skipping the per-section KEY_POINTS_INITIAL cap)
+  // so a match in a hidden tail key_point isn't itself hidden.
+  const filteredSections = useMemo(() => {
+    if (!q) return view.sections;
+    return view.sections.filter((s) => {
+      if (s.heading.toLowerCase().includes(q)) return true;
+      if (s.summary.toLowerCase().includes(q)) return true;
+      for (const kp of s.key_points) {
+        if (kp.text.toLowerCase().includes(q)) return true;
+      }
+      return false;
+    });
+  }, [view.sections, q]);
+
+  // Count total textual matches across surviving sections — drives the
+  // "12 matches across 3 sections" banner.
+  const matchCount = useMemo(() => {
+    if (!q) return 0;
+    let total = 0;
+    for (const s of filteredSections) {
+      total += countMatches(s.heading, q);
+      total += countMatches(s.summary, q);
+      for (const kp of s.key_points) {
+        total += countMatches(kp.text, q);
+      }
+    }
+    return total;
+  }, [filteredSections, q]);
+
   // (collapseEligible defined above the hash-change effect.) The actual
-  // visible / hidden split for the current render:
-  const visibleSections =
-    collapseEligible && !showAllSections
+  // visible / hidden split for the current render. When q is non-empty
+  // the search has already filtered down to relevant sections, so we
+  // always render the full filtered set (no "Show N more sections" tail).
+  const visibleSections = q
+    ? filteredSections
+    : collapseEligible && !showAllSections
       ? view.sections.slice(0, SECTIONS_COLLAPSE_THRESHOLD)
       : view.sections;
   const hiddenSections =
-    collapseEligible && !showAllSections
+    !q && collapseEligible && !showAllSections
       ? view.sections.slice(SECTIONS_COLLAPSE_THRESHOLD)
       : [];
   const hiddenSectionCount = hiddenSections.length;
@@ -207,8 +255,9 @@ export function DocView({ slug, data, entries }: Props) {
       {/* "Recently active" callout — surfaces the top sections by newest
           member post, so returning visitors see what's new without
           having sections shift position in the body (which is sorted
-          alphabetically for stability). */}
-      {recentlyActive.length > 0 && (
+          alphabetically for stability). Hidden while searching: the
+          search result IS the user's intended focus. */}
+      {!q && recentlyActive.length > 0 && (
         <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/40 p-4">
           <h2 className="text-xs font-semibold text-emerald-900 mb-2.5 inline-flex items-center gap-1.5 uppercase tracking-wide">
             <Activity size={12} strokeWidth={2.5} />
@@ -221,7 +270,7 @@ export function DocView({ slug, data, entries }: Props) {
                   href={`#${sectionAnchor(r.section.heading, r.originalIndex)}`}
                   className="text-zinc-800 hover:text-zinc-900 no-underline font-medium"
                 >
-                  {renderHeading(r.section.heading)}
+                  {renderHeading(r.section.heading, q)}
                 </a>
                 <span className="text-xs text-zinc-500">
                   {formatRelativeTime(r.newestMs)}
@@ -239,8 +288,9 @@ export function DocView({ slug, data, entries }: Props) {
       {/* Jump-to TOC — appears once we have enough sections that
           scrolling-to-find becomes painful. Pure anchor links to each
           section header. Not sticky (keeps mobile clean); a single
-          horizontal scroll on narrow screens. */}
-      {view.sections.length >= TOC_THRESHOLD && (
+          horizontal scroll on narrow screens. Hidden when the user is
+          searching: the filtered section list IS the navigation. */}
+      {!q && view.sections.length >= TOC_THRESHOLD && (
         <nav
           aria-label="Sections"
           className="border-y border-zinc-200 -mx-2 px-2 py-3 overflow-x-auto"
@@ -262,6 +312,34 @@ export function DocView({ slug, data, entries }: Props) {
         </nav>
       )}
 
+      {/* Match-count banner / empty state — only when q is set. */}
+      {q && (
+        filteredSections.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-300 bg-white/60 p-10 text-center fade-in">
+            <p className="text-base font-medium text-zinc-900">
+              No sections match{" "}
+              <span className="font-mono bg-zinc-100 rounded px-1.5 py-0.5">{q}</span>
+              .
+            </p>
+            <p className="mt-2 text-sm text-zinc-500 max-w-sm mx-auto">
+              Try another spelling, or switch to the Chronological view to
+              search post-by-post.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-zinc-500">
+            <span className="font-mono tabular-nums text-zinc-700">
+              {matchCount}
+            </span>{" "}
+            {matchCount === 1 ? "match" : "matches"} across{" "}
+            <span className="font-mono tabular-nums text-zinc-700">
+              {filteredSections.length}
+            </span>{" "}
+            {filteredSections.length === 1 ? "section" : "sections"}
+          </p>
+        )
+      )}
+
       {/* Sections */}
       {view.sections.length === 0 ? (
         <p className="text-sm text-zinc-500 italic">
@@ -271,7 +349,12 @@ export function DocView({ slug, data, entries }: Props) {
       ) : (
         <div className="space-y-9">
           {visibleSections.map((s, i) => {
-            const recency = sectionsWithRecency[i]!;
+            // When q is set, `visibleSections` is `filteredSections`, so
+            // index `i` no longer maps to the original section position
+            // used for the recency table. We look up by reference.
+            const recencyEntry =
+              sectionsWithRecency.find((r) => r.section === s) ??
+              sectionsWithRecency[i]!;
             return (
               <SectionRender
                 key={i}
@@ -279,9 +362,10 @@ export function DocView({ slug, data, entries }: Props) {
                 index={i}
                 seqToId={entry_seq_to_id}
                 isNew={
-                  recency.newestMs > 0 &&
-                  Date.now() - recency.newestMs <= NEW_BADGE_WINDOW_MS
+                  recencyEntry.newestMs > 0 &&
+                  Date.now() - recencyEntry.newestMs <= NEW_BADGE_WINDOW_MS
                 }
+                q={q}
               />
             );
           })}
@@ -403,14 +487,22 @@ function SectionRender({
   index,
   seqToId,
   isNew,
+  q = "",
 }: {
   section: DocViewSection;
   index: number;
   seqToId: Record<string, string>;
   isNew: boolean;
+  /** Already-normalized search query. When non-empty, force-shows all
+   *  key_points (skipping the per-section collapse) and threads through
+   *  to CitedText so substring matches get <mark>-highlighted. */
+  q?: string;
 }) {
   const [showAllKeyPoints, setShowAllKeyPoints] = useState(false);
-  const visibleKp = showAllKeyPoints
+  // When searching, ignore the per-section key_point cap so a matching
+  // tail key_point isn't itself hidden.
+  const showAll = showAllKeyPoints || q !== "";
+  const visibleKp = showAll
     ? section.key_points
     : section.key_points.slice(0, KEY_POINTS_INITIAL);
   const hiddenKpCount = section.key_points.length - visibleKp.length;
@@ -419,7 +511,7 @@ function SectionRender({
   return (
     <section id={anchor} className="scroll-mt-4">
       <h2 className="text-xl font-semibold tracking-tight text-zinc-900 mb-3 inline-flex items-baseline flex-wrap gap-2">
-        <span>{renderHeading(section.heading)}</span>
+        <span>{renderHeading(section.heading, q)}</span>
         {isNew && (
           <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-700 bg-emerald-50 border border-emerald-200/70 rounded-full px-2 py-0.5 leading-none">
             new
@@ -427,7 +519,7 @@ function SectionRender({
         )}
       </h2>
       <div className="text-[15px] text-zinc-800 leading-relaxed prose-doc">
-        <CitedText text={section.summary} seqToId={seqToId} paragraphs />
+        <CitedText text={section.summary} seqToId={seqToId} paragraphs q={q} />
       </div>
       {section.key_points.length > 0 && (
         <ul className="mt-4 space-y-2">
@@ -438,7 +530,7 @@ function SectionRender({
             >
               <span className="text-zinc-300 mt-1.5 shrink-0">•</span>
               <span>
-                <CitedText text={kp.text} seqToId={seqToId} />{" "}
+                <CitedText text={kp.text} seqToId={seqToId} q={q} />{" "}
                 <CitesInline cites={kp.cites} seqToId={seqToId} />
               </span>
             </li>
@@ -553,10 +645,14 @@ function CitedText({
   text,
   seqToId,
   paragraphs = false,
+  q = "",
 }: {
   text: string;
   seqToId: Record<string, string>;
   paragraphs?: boolean;
+  /** Already-normalized search query; non-cite text segments get
+   *  substring-highlighted via <mark> when set. */
+  q?: string;
 }) {
   if (paragraphs) {
     const chunks = text.split(/\n{2,}/);
@@ -564,32 +660,42 @@ function CitedText({
       <>
         {chunks.map((chunk, i) => (
           <p key={i}>
-            <InlineCitations text={chunk} seqToId={seqToId} />
+            <InlineCitations text={chunk} seqToId={seqToId} q={q} />
           </p>
         ))}
       </>
     );
   }
-  return <InlineCitations text={text} seqToId={seqToId} />;
+  return <InlineCitations text={text} seqToId={seqToId} q={q} />;
 }
 
 /** Inline citation parsing — no paragraph splitting. Used for one-line
- *  fields like key_points.text. */
+ *  fields like key_points.text. Non-cite text gets wrapped in <Highlight>
+ *  so a search match shows up alongside the citation links. */
 function InlineCitations({
   text,
   seqToId,
+  q = "",
 }: {
   text: string;
   seqToId: Record<string, string>;
+  q?: string;
 }) {
   const nodes: ReactNode[] = [];
   const re = /\[\s*#\d+(?:\s*,\s*#\d+)*\s*\]/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
   let key = 0;
+  function pushText(s: string, k: string) {
+    if (q) {
+      nodes.push(<Highlight key={k} text={s} q={q} />);
+    } else {
+      nodes.push(s);
+    }
+  }
   while ((match = re.exec(text)) !== null) {
     if (match.index > cursor) {
-      nodes.push(text.slice(cursor, match.index));
+      pushText(text.slice(cursor, match.index), `t${key}`);
     }
     const seqs = parseSeqList(match[0]);
     nodes.push(
@@ -597,7 +703,7 @@ function InlineCitations({
     );
     cursor = match.index + match[0].length;
   }
-  if (cursor < text.length) nodes.push(text.slice(cursor));
+  if (cursor < text.length) pushText(text.slice(cursor), `tend`);
   return <>{nodes}</>;
 }
 
@@ -679,14 +785,20 @@ function CiteLink({
  * Render a section heading. If the LLM produced "Context · Subject", style
  * the context in muted text. Otherwise render whole as the title.
  */
-function renderHeading(s: string): ReactNode {
+function renderHeading(s: string, q = ""): ReactNode {
   const idx = s.indexOf(" · ");
-  if (idx < 0) return s;
+  if (idx < 0) {
+    return q ? <Highlight text={s} q={q} /> : s;
+  }
+  const left = s.slice(0, idx);
+  const right = s.slice(idx + 3);
   return (
     <>
-      <span className="text-zinc-500 font-normal">{s.slice(0, idx)}</span>
+      <span className="text-zinc-500 font-normal">
+        {q ? <Highlight text={left} q={q} /> : left}
+      </span>
       <span className="text-zinc-300 font-normal mx-1.5">·</span>
-      <span>{s.slice(idx + 3)}</span>
+      <span>{q ? <Highlight text={right} q={q} /> : right}</span>
     </>
   );
 }
