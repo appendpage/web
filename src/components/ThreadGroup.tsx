@@ -13,11 +13,16 @@
  *      │  compact reply 1 (oldest)
  *      │  compact reply 2
  *      │  [ Show N more replies ▾ ]   ← only if >2 descendants
+ *      │  compact reply (newest)      ← pinned when 4+ descendants, so a
+ *      │                                fresh reply that bumped the thread
+ *      │                                to the top is immediately visible
  *
  * Indented descendants share a thin vertical guide line (the left border)
  * so the grouping is obvious even when a reply runs long. Replies render
  * in chronological order (oldest first) so the conversation reads
- * top-to-bottom like an instant message thread.
+ * top-to-bottom like an instant message thread; the pinned newest at the
+ * bottom (Twitter/Threads/Bluesky pattern) gives readers immediate
+ * context for why the thread sits where it does in the list.
  *
  * Replies-to-replies are visually flat (no second-level indent); the
  * reader knows a reply is answering some other reply (not the root)
@@ -72,23 +77,43 @@ export function ThreadGroup({
   const forceExpandAll = q !== "";
   const effectivelyExpanded = expanded || forceExpandAll;
   const collapseEligible = totalReplies > REPLIES_INITIAL;
-  const visibleReplies =
+
+  // Pin the newest reply at the bottom of the collapsed view when there's
+  // at least one truly-hidden reply between the oldest-N and the newest
+  // (so 4+ replies). Threads sort by latest activity DESC at the page
+  // level — without this pin, a fresh reply that just bumped the thread
+  // to the top would silently sit hidden behind the "Show N more" toggle
+  // and the visitor would have no idea what bumped it. For 3-reply
+  // threads pinning would mean rendering all three with no gap, which is
+  // just the uncollapsed view in disguise — skip the visual split there.
+  const lastIdx = totalReplies - 1;
+  const pinnedNewest =
+    collapseEligible && !effectivelyExpanded && lastIdx > REPLIES_INITIAL
+      ? thread.descendants[lastIdx]!
+      : null;
+
+  const visibleOldest =
     collapseEligible && !effectivelyExpanded
       ? thread.descendants.slice(0, REPLIES_INITIAL)
       : thread.descendants;
   const hiddenReplyCount =
     collapseEligible && !effectivelyExpanded
-      ? totalReplies - REPLIES_INITIAL
+      ? totalReplies - REPLIES_INITIAL - (pinnedNewest ? 1 : 0)
       : 0;
 
   // If the user just posted a reply that lands inside this thread but is
   // currently hidden behind the collapse, auto-expand so the post-flash is
-  // visible. Cheap check; runs every render but only flips state once.
+  // visible. The "lands in hidden middle" set is descendants with seq
+  // index in [REPLIES_INITIAL, lastIdx) — the pinned-newest at lastIdx is
+  // already rendered without expanding, so we don't need to fire for it.
   if (
     !expanded &&
     justPostedId &&
     thread.descendants.some(
-      (d, i) => d.entry.id === justPostedId && i >= REPLIES_INITIAL,
+      (d, i) =>
+        d.entry.id === justPostedId &&
+        i >= REPLIES_INITIAL &&
+        (!pinnedNewest || i < lastIdx),
     )
   ) {
     setExpanded(true);
@@ -105,7 +130,7 @@ export function ThreadGroup({
       />
       {totalReplies > 0 && (
         <div className="ml-6 sm:ml-10 border-l-2 border-zinc-100 pl-4 sm:pl-5 space-y-2">
-          {visibleReplies.map((d) => (
+          {visibleOldest.map((d) => (
             <EntryCard
               key={d.entry.id}
               entry={d.entry}
@@ -137,6 +162,19 @@ export function ThreadGroup({
                 </>
               )}
             </button>
+          )}
+          {pinnedNewest && (
+            <EntryCard
+              key={pinnedNewest.entry.id}
+              entry={pinnedNewest.entry}
+              body={bodies[pinnedNewest.entry.id] ?? null}
+              onReply={onReply}
+              justPosted={pinnedNewest.entry.id === justPostedId}
+              compact
+              directParentSeq={pinnedNewest.directParentSeq}
+              threadRootSeq={thread.root.seq}
+              highlight={q}
+            />
           )}
         </div>
       )}
