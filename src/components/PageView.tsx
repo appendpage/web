@@ -257,13 +257,30 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
           JCS-canonicalized JSONL · one entry per line · the canonical wire
           format
         </span>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
           <a
             href={`/p/${encodeURIComponent(slug)}/raw`}
             className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
+            title="JCS-canonicalized chain, one entry per line"
           >
             <Download size={12} />
-            Download
+            Chain (.jsonl)
+          </a>
+          <a
+            href={`/p/${encodeURIComponent(slug)}/bodies.jsonl`}
+            className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
+            title="Body + salt per line, same order as the chain"
+          >
+            <Download size={12} />
+            Bodies (.jsonl)
+          </a>
+          <a
+            href={`/p/${encodeURIComponent(slug)}/archive.zip`}
+            className="inline-flex items-center gap-1 no-underline hover:text-zinc-900"
+            title="Chain + bodies + verifier + README, all in one zip"
+          >
+            <Download size={12} />
+            Everything (.zip)
           </a>
           <a
             href="https://huggingface.co/datasets/appendpage/ledger"
@@ -276,13 +293,24 @@ function RawView({ slug, rawSnippet }: { slug: string; rawSnippet: string }) {
       <div className="max-h-[60vh] overflow-auto">
         <CodeBlock tone="light">{rawSnippet}</CodeBlock>
       </div>
-      <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500">
-        <p className="mb-2">
-          Verify the chain and every body in one command:
-        </p>
-        <CodeBlock>
-          {`python verify.py https://append.page/p/${slug}`}
-        </CodeBlock>
+      <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500 space-y-3">
+        <div>
+          <p className="mb-2">
+            Verify chain + every body live, in one command:
+          </p>
+          <CodeBlock>
+            {`python verify.py https://append.page/p/${slug}`}
+          </CodeBlock>
+        </div>
+        <div>
+          <p className="mb-2">
+            Or extract <span className="font-mono">archive.zip</span> and
+            verify offline (no network):
+          </p>
+          <CodeBlock>
+            {`python verify.py chain.jsonl --with-bodies bodies.jsonl`}
+          </CodeBlock>
+        </div>
       </div>
     </div>
   );
