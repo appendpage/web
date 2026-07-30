@@ -59,9 +59,25 @@ export async function fetchEntryBody(
 }
 
 /**
- * Fetch the bodies for many entries in one batch (POST /p/:slug/bodies with
- * a list of ids). Falls back to per-entry fetches if the bulk endpoint is
- * not yet available on the backend (the bulk endpoint is added in Phase B).
+ * Maximum IDs accepted by POST /p/:slug/bodies (enforced by the backend's
+ * Zod request schema). Keep this client-side cap in sync with it.
+ *
+ * Pages can easily grow past this: sending every page id in one request
+ * makes the backend correctly return 400, which used to trigger the legacy
+ * "first 100 individual requests" fallback and leave every later card
+ * rendered as `[loading…]`. Batch before requesting instead.
+ */
+const BODIES_BATCH_SIZE = 200;
+
+/**
+ * Fetch all bodies for a page in <=200-id POST batches and merge them into
+ * one map. Requests are deliberately sequential: a large page should not
+ * turn a render into hundreds of simultaneous API calls, and normal pages
+ * (<=200 entries) still make exactly one request.
+ *
+ * The single-entry fallback is retained only for a failed *batch* (e.g. an
+ * older compatible backend without the bulk endpoint), not as the normal
+ * path for pages larger than BODIES_BATCH_SIZE.
  */
 export async function fetchBodies(
   slug: string,
@@ -69,29 +85,34 @@ export async function fetchBodies(
 ): Promise<Map<string, EntryWithBody>> {
   const result = new Map<string, EntryWithBody>();
   if (entryIds.length === 0) return result;
-  const res = await fetch(
-    `${API_URL}/p/${encodeURIComponent(slug)}/bodies`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ids: entryIds }),
-      cache: "no-store",
-    },
-  );
-  if (res.ok) {
-    const json = (await res.json()) as { entries: EntryWithBody[] };
-    for (const e of json.entries) result.set(e.entry.id, e);
-    return result;
+
+  for (let start = 0; start < entryIds.length; start += BODIES_BATCH_SIZE) {
+    const ids = entryIds.slice(start, start + BODIES_BATCH_SIZE);
+    const res = await fetch(
+      `${API_URL}/p/${encodeURIComponent(slug)}/bodies`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+        cache: "no-store",
+      },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { entries: EntryWithBody[] };
+      for (const e of json.entries) result.set(e.entry.id, e);
+      continue;
+    }
+
+    // Compatibility/error fallback for this batch only. We preserve the
+    // prior resilience to an unavailable bulk endpoint, but never silently
+    // drop bodies just because the page exceeded the server's batch cap.
+    await Promise.all(
+      ids.map(async (id) => {
+        const body = await fetchEntryBody(slug, id);
+        if (body) result.set(id, body);
+      }),
+    );
   }
-  // Bulk endpoint not implemented yet — fall back to one fetch per entry,
-  // capped at 100 to avoid runaway pages during page render.
-  const slice = entryIds.slice(0, 100);
-  await Promise.all(
-    slice.map(async (id) => {
-      const body = await fetchEntryBody(slug, id);
-      if (body) result.set(id, body);
-    }),
-  );
   return result;
 }
 
