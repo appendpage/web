@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import type { ChainEntry, EntryWithBody } from "@/lib/types";
 import { Highlight } from "./Highlight";
+import { ReportButton } from "./ReportButton";
 
 interface Props {
   entry: ChainEntry;
@@ -180,6 +181,7 @@ export function EntryCard({
           <Reply size={compact ? 12 : 14} strokeWidth={2} />
           Reply
         </button>
+        {!isModeration && <ReportButton entry={entry} compact={compact} />}
       </footer>
     </article>
   );
