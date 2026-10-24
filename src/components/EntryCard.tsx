@@ -3,11 +3,13 @@
 import { AtSign, CornerDownRight, Reply, Shield } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import type { ChainEntry, EntryWithBody } from "@/lib/types";
 import { Highlight } from "./Highlight";
 import { ReportButton } from "./ReportButton";
+
+const subscribeToHydration = () => () => {};
 
 interface Props {
   entry: ChainEntry;
@@ -63,6 +65,9 @@ export function EntryCard({
   highlight = "",
 }: Props) {
   const [showHash, setShowHash] = useState(false);
+  // The server cannot know the reader's timezone. Keep the first render
+  // deterministic, then show local/relative time after hydration.
+  const hydrated = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const isModeration = entry.kind === "moderation";
   const erased = body?.erased ?? false;
   const text = body?.body ?? null;
@@ -98,7 +103,7 @@ export function EntryCard({
           <span className="font-mono text-zinc-400">#{entry.seq}</span>
           <span className="text-zinc-300">·</span>
           <time dateTime={entry.created_at} className="text-zinc-500">
-            {formatTime(entry.created_at)}
+            {hydrated ? formatTime(entry.created_at) : entry.created_at.slice(0, 10)}
           </time>
           {isModeration && (
             <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-2 py-0.5 text-[10px] uppercase tracking-wide font-medium">
