@@ -141,8 +141,7 @@ export function EntryCard({
       <div className={compact ? "prose-entry text-sm" : "prose-entry"}>
         {erased ? (
           <p className="italic text-zinc-500">
-            [body erased
-            {body?.erased_reason ? `: ${body.erased_reason}` : ""}]
+            {body?.erased_reason ?? "Content unavailable."}
           </p>
         ) : text ? (
           highlight ? (
