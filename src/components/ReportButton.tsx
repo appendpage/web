@@ -3,15 +3,18 @@
 import { Flag, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import type { ChainEntry } from "@/lib/types";
 import { reportReasons } from "@/lib/report-reasons";
 
 export function ReportButton({ entry, compact }: { entry: ChainEntry; compact?: boolean }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [details, setDetails] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
+  const [withheld, setWithheld] = useState(false);
   const [error, setError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -45,7 +48,9 @@ export function ReportButton({ entry, compact }: { entry: ChainEntry; compact?: 
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "Couldn't send your report. Please try again.");
+      setWithheld(data.withheld === true);
       setSent(true);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error && err.name !== "TimeoutError" ? err.message : "Couldn't confirm receipt. Please try again.");
     } finally { setBusy(false); }
@@ -65,10 +70,10 @@ export function ReportButton({ entry, compact }: { entry: ChainEntry; compact?: 
           <button type="button" onClick={close} aria-label="Close report" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-zinc-100"><X size={20} /></button>
         </div>
         {sent ? <>
-          <p role="status" className="text-sm leading-relaxed text-zinc-600">Your report is private and will be reviewed.</p>
+          <p role="status" className="text-sm leading-relaxed text-zinc-600">{withheld ? "The post is hidden. Your report is private and will be reviewed." : "Your report was already received. The post has since been reviewed."}</p>
           <button type="button" onClick={close} className="mt-6 min-h-11 w-full rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white">Done</button>
         </> : <form onSubmit={submit} className="space-y-4">
-          <p className="text-sm text-zinc-600">Only the moderator can see your report.</p>
+          <p className="text-sm text-zinc-600">Reporting hides this post until a moderator reviews it. Your report stays private.</p>
           <div>
             <label htmlFor={reasonId} className="mb-1.5 block text-sm font-medium">Reason</label>
             <select id={reasonId} required value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy}
